@@ -1,5 +1,8 @@
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 简单测试: 导入 AsyncIOManager 并初始化/关闭，验证没有语法错误并能启动后台 loop
-from utils.async_executor import AsyncIOManager
+from src.utils.async_executor import AsyncIOManager
 import time
 
 m = AsyncIOManager(timeout=5, verify_ssl=False, max_connections=10, auth_method='basic')

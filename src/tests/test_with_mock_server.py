@@ -1,9 +1,11 @@
+import os
 """Run ConfigExecutor tests against a local mock CGI server.
 
 This script starts the aiohttp mock server in a background thread (safe on Windows),
 then runs two tests (digest and basic) against it, and finally stops the server.
 """
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import threading
 import asyncio
@@ -11,8 +13,8 @@ import asyncio
 sys.path.insert(0, r"C:\Users\Administrator\Desktop\CGI\V9.5")
 
 from aiohttp import web
-from utils.device_manager import ConfigExecutor, DeviceInfo
-from utils.log_manager import LogManager
+from src.utils.device_manager import ConfigExecutor, DeviceInfo
+from src.utils.log_manager import LogManager
 
 
 def start_mock_server_thread():

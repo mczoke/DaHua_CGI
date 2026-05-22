@@ -590,8 +590,9 @@ class ConfigExecutor:
             if self.use_async and self.async_manager:
                 # 优先使用异步实现（device_first 模式支持）
                 if exec_strategy == "device_first":
-                    fut = self.async_manager.run_coroutine(self._async_execute_by_device(target_devices, mode, progress_callback, stop_callback))
-                    return fut.result()
+                    # run_coroutine 直接返回结果，不是 Future
+                    result = self.async_manager.run_coroutine(self._async_execute_by_device(target_devices, mode, progress_callback, stop_callback))
+                    return result
                 else:
                     # 暂时仍使用同步的命令优先实现以保持兼容
                     return self._execute_by_command_strict(target_devices, mode, progress_callback, stop_callback)

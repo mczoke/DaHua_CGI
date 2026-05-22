@@ -1,0 +1,39 @@
+日志初始化
+[2026-05-22 05:03:04] [DEBUG] AsyncIOManager 已初始化，设备并发数: 5，命令并发数: 10
+[2026-05-22 05:03:04] [INFO] 开始配置 2 台符合条件的在线设备
+[2026-05-22 05:03:04] [INFO] 总配置任务数: 2 (仅在线设备)
+[2026-05-22 05:03:04] [INFO] [async] 使用设备优先策略，将处理 2 台在线设备
+[2026-05-22 05:03:04] [INFO] [async] 设备 127.0.0.1 开始执行 1 条命令
+[2026-05-22 05:03:04] [INFO] 设备 127.0.0.1 CGI请求 1/1: http://admin:****@127.0.0.1:80/cgi-bin/configManager.cgi?action=setConfig&testparam%3D1
+[2026-05-22 05:03:04] [CGI_REQUEST] 设备 127.0.0.1 请求 1/1
+  请求URL: http://admin:admin@127.0.0.1:80/cgi-bin/configManager.cgi?action=setConfig&testparam%3D1
+  原始命令: testparam=1
+  请求方法: GET
+  认证方式: URL_Auth
+  请求头: {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Connection': 'close'}
+[2026-05-22 05:03:04] [INFO] [async] 设备 127.0.0.1 开始执行 1 条命令
+[2026-05-22 05:03:04] [INFO] 设备 127.0.0.1 CGI请求 1/1: http://admin:****@127.0.0.1:81/cgi-bin/configManager.cgi?action=setConfig&testparam%3D1
+[2026-05-22 05:03:04] [CGI_REQUEST] 设备 127.0.0.1 请求 1/1
+  请求URL: http://admin:admin@127.0.0.1:81/cgi-bin/configManager.cgi?action=setConfig&testparam%3D1
+  原始命令: testparam=1
+  请求方法: GET
+  认证方式: URL_Auth
+  请求头: {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Connection': 'close'}
+[2026-05-22 05:03:04] [CGI_RESPONSE] 设备 127.0.0.1 响应
+  原始命令: testparam=1
+  状态码: FAILED
+  响应时间: 0.00s
+  响应头: {}
+  响应内容: 请求异常: HTTPConnectionPool(host='127.0.0.1', port=80): Max retries exceeded with url: /cgi-bin/configManager.cgi?action=setConfig&testparam=1 (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=80): Failed to establish a new connection: [Errno 111] Connection refused"))
+[2026-05-22 05:03:04] [ERROR] 设备 127.0.0.1 HTTP错误 FAILED, 耗时=0.00s
+[2026-05-22 05:03:04] [CGI_RESPONSE] 设备 127.0.0.1 响应
+  原始命令: testparam=1
+  状态码: FAILED
+  响应时间: 0.00s
+  响应头: {}
+  响应内容: 请求异常: HTTPConnectionPool(host='127.0.0.1', port=81): Max retries exceeded with url: /cgi-bin/configManager.cgi?action=setConfig&testparam=1 (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=81): Failed to establish a new connection: [Errno 111] Connection refused"))
+[2026-05-22 05:03:04] [ERROR] 设备 127.0.0.1 HTTP错误 FAILED, 耗时=0.00s
+[2026-05-22 05:03:04] [INFO] [async] 配置完成: 共2 台设备有执行结果
+[2026-05-22 05:03:04] [WARNING] 正在停止所有配置任务...
+[2026-05-22 05:03:04] [DEBUG] HTTP session 已关闭以中断请求
+[2026-05-22 05:03:04] [DEBUG] AsyncIOManager 已关闭

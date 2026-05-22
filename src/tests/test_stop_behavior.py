@@ -1,11 +1,13 @@
+import os
 """测试停止行为：启动 mock CGI server，启动执行器并在短暂等待后触发 stop，验证 AsyncIOManager 关闭。"""
 import time
 import threading
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, r"C:\Users\Administrator\Desktop\CGI\V9.5")
 
-from utils.device_manager import ConfigExecutor, DeviceInfo
-from utils.log_manager import LogManager
+from src.utils.device_manager import ConfigExecutor, DeviceInfo
+from src.utils.log_manager import LogManager
 import tests.test_with_mock_server as tw
 
 
