@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 复制自 V9.4.1/utils/config_manager.py
+"""
+配置管理模块 - V9.5
+双源加载: YAML 优先, 环境变量覆盖, 兼容旧 JSON 格式
+"""
 
 import json
+import logging
 import os
 import sys
 from datetime import datetime
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+
 class ConfigManager:
+    """配置管理器 — 双源加载（YAML 优先, 环境变量覆盖, 兼容旧 JSON）"""
+
+    # ========== 路径工具 ==========
+
     @staticmethod
     def get_app_directory():
         if getattr(sys, 'frozen', False):
@@ -24,21 +38,25 @@ class ConfigManager:
         return config_dir
 
     @staticmethod
-    def get_config_path():
-        config_dir = ConfigManager.get_config_directory()
-        return os.path.join(config_dir, "dahua_config.json")
+    def get_config_yaml_path():
+        return os.path.join(ConfigManager.get_config_directory(), "config.yaml")
 
     @staticmethod
-    def load_config():
-        config_file = ConfigManager.get_config_path()
-        default_config = {
+    def get_config_json_path():
+        return os.path.join(ConfigManager.get_config_directory(), "dahua_config.json")
+
+    # ========== 默认值 ==========
+
+    @staticmethod
+    def get_default_config():
+        return {
             "cgi_commands": ConfigManager.get_default_cgi_commands(),
             "variable_mappings": {},
-            "timeout": 1000,
+            "timeout": 30,
             "verify_ssl": False,
-            "max_retries": 0,
+            "max_retries": 3,
             "auth_method": "digest",
-            "ping_timeout": 200,
+            "ping_timeout": 3,
             "ping_count": 1,
             "ping_concurrent": 150,
             "config_concurrent": 80,
@@ -50,27 +68,6 @@ class ConfigManager:
             "auto_save_results": True,
             "export_format": "excel",
         }
-        try:
-            if not os.path.exists(config_file):
-                ConfigManager.save_config(default_config)
-                return default_config
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            config = ConfigManager._validate_and_fix_config(config, default_config)
-            return config
-        except Exception:
-            return default_config
-
-    @staticmethod
-    def _validate_and_fix_config(config, default_config):
-        for key, value in default_config.items():
-            if key not in config:
-                config[key] = value
-        if config.get("ping_concurrent", 0) > 200:
-            config["ping_concurrent"] = 200
-        if config.get("config_concurrent", 0) > 100:
-            config["config_concurrent"] = 100
-        return config
 
     @staticmethod
     def get_default_cgi_commands():
@@ -85,14 +82,99 @@ class ConfigManager:
             "VideoWidget[0].CustomTitle[0].TextAlign=2",
         ]
 
+    # ========== 加载 ==========
+
+    @staticmethod
+    def load_config():
+        """加载配置：YAML 优先，环境变量覆盖，兼容旧 JSON"""
+        defaults = ConfigManager.get_default_config()
+        config = dict(defaults)  # 浅拷贝
+
+        # 1) 尝试加载 YAML
+        yaml_path = ConfigManager.get_config_yaml_path()
+        if yaml and os.path.exists(yaml_path):
+            try:
+                with open(yaml_path, "r", encoding="utf-8") as f:
+                    yaml_config = yaml.safe_load(f) or {}
+                config.update(yaml_config)
+            except Exception as e:
+                logging.warning(f"加载 config.yaml 失败: {e}")
+
+        # 2) 兼容旧 JSON（YAML 不存在的字段从 JSON 补）
+        json_path = ConfigManager.get_config_json_path()
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    json_config = json.load(f)
+                # JSON 覆盖 YAML（保留 YAML 中没有的字段）
+                for k, v in json_config.items():
+                    if k not in config or config[k] == defaults.get(k):
+                        config[k] = v
+            except Exception:
+                pass
+
+        # 3) 环境变量覆盖（大写 + 下划线）
+        config = ConfigManager._apply_env_overrides(config)
+
+        # 4) 校验&修正
+        config = ConfigManager._validate_and_fix_config(config, defaults)
+
+        return config
+
+    @staticmethod
+    def _apply_env_overrides(config):
+        """环境变量覆盖：{timeout → TIMEOUT}"""
+        env_map = {
+            "timeout": "TIMEOUT",
+            "ping_timeout": "PING_TIMEOUT",
+            "ping_count": "PING_COUNT",
+            "ping_concurrent": "PING_CONCURRENT",
+            "config_concurrent": "CONFIG_CONCURRENT",
+            "max_retries": "MAX_RETRIES",
+            "log_level": "LOG_LEVEL",
+            "export_format": "EXPORT_FORMAT",
+            "auth_method": "AUTH_METHOD",
+            "verify_ssl": "VERIFY_SSL",
+        }
+        for key, env_key in env_map.items():
+            val = os.environ.get(env_key)
+            if val is not None:
+                # 布尔/数字转换
+                if val.lower() in ("true", "1", "yes"):
+                    config[key] = True
+                elif val.lower() in ("false", "0", "no"):
+                    config[key] = False
+                else:
+                    try:
+                        config[key] = int(val)
+                    except ValueError:
+                        try:
+                            config[key] = float(val)
+                        except ValueError:
+                            config[key] = val
+        return config
+
+    @staticmethod
+    def _validate_and_fix_config(config, default_config):
+        for key, value in default_config.items():
+            if key not in config:
+                config[key] = value
+        if config.get("ping_concurrent", 0) > 200:
+            config["ping_concurrent"] = 200
+        if config.get("config_concurrent", 0) > 100:
+            config["config_concurrent"] = 100
+        return config
+
+    # ========== 保存（写入 JSON 以保证向下兼容） ==========
+
     @staticmethod
     def save_config(config):
         try:
-            config_file = ConfigManager.get_config_path()
+            config_file = ConfigManager.get_config_json_path()
             config_dir = os.path.dirname(config_file)
             if not os.path.exists(config_dir):
                 os.makedirs(config_dir, exist_ok=True)
-            with open(config_file, 'w', encoding='utf-8') as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(config, f, ensure_ascii=False, indent=4, sort_keys=True)
             return True
         except Exception:

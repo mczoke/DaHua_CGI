@@ -1,0 +1,33 @@
+# DaHua_CGI 全局配置文件
+# 此文件为配置主源，环境变量可覆盖（大写+下划线格式）
+
+# 超时设置（秒）
+timeout: 30
+ping_timeout: 3
+ping_count: 1
+
+# 并发控制
+ping_concurrent: 150
+config_concurrent: 80
+
+# 认证设置
+auth_method: digest
+
+# SSL
+verify_ssl: false
+
+# 重试策略
+max_retries: 3
+
+# 日志
+log_level: INFO
+
+# 导出格式
+export_format: excel
+
+# 执行策略
+exec_strategy: device_first
+enable_precheck: true
+auto_skip_offline: true
+default_mode: standard
+auto_save_results: true

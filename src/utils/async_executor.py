@@ -2,32 +2,73 @@
 修复后的异步执行器 - 基于requests库的解决方案
 - 使用requests + asyncio线程池，解决aiohttp的Digest认证问题
 - 已验证成功的替代方案，避免401认证错误
+
+v2.0 (2026-06-01):
+  - SyncRequestsExecutor: 添加重试机制 (Retry total=3, backoff_factor=0.5)
+  - AsyncExecutor/AsyncIOManager: 添加固定 ThreadPoolExecutor(max_workers=50)
+  - verify_ssl 默认改为 True, 通过配置控制
+  - close() 优雅关闭线程池
 """
 
 import asyncio
+import concurrent.futures
+import logging
 import threading
 import urllib.parse
-from typing import Dict, Any, Tuple
-import requests
-from requests.auth import HTTPDigestAuth
+from typing import Dict, Any, Tuple, Optional
 
-# 导入日志管理器以记录详细元数据
+import requests
+from requests.adapters import HTTPAdapter
+from requests.auth import HTTPDigestAuth
+from urllib3.util.retry import Retry
+
 from utils.log_manager import LogManager
 
+logger = logging.getLogger(__name__)
+
+
 class SyncRequestsExecutor:
-    """同步requests执行器"""
-    
-    def send_command_sync(self, device, command) -> Tuple[bool, str, str, Dict, str]:
+    """同步requests执行器（带重试机制）"""
+
+    def __init__(self, verify_ssl: bool = True, request_timeout: int = 30):
+        self.verify_ssl = verify_ssl
+        self.request_timeout = request_timeout
+        self._session: Optional[requests.Session] = None
+
+    def _get_session(self) -> requests.Session:
+        """获取带重试配置的 requests Session（惰性创建）"""
+        if self._session is None:
+            self._session = requests.Session()
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["GET", "POST"],
+            )
+            adapter = HTTPAdapter(
+                pool_connections=100,
+                pool_maxsize=100,
+                max_retries=retry_strategy,
+            )
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def send_command_sync(
+        self, device, command
+    ) -> Tuple[bool, str, str, Dict, str]:
         """
-        同步发送命令（已验证成功）
-        
+        同步发送命令（带自动重试）
+
         Args:
             device: 设备信息对象
             command: 命令字典或字符串
-            
+
         Returns:
             Tuple[成功标志, 响应文本, 状态, 数据, 错误信息]
         """
+        session = self._get_session()
+
         try:
             # 处理字符串命令：转换为字典格式
             if isinstance(command, str):
@@ -45,86 +86,94 @@ class SyncRequestsExecutor:
                     command = {
                         "action": command
                     }
-            
+
             # 根据命令类型选择不同的CGI接口
             action = command.get("action", "")
-            
+
             if action == "getCurrentTime":
                 base_url = f"http://{device.ip}:{device.port}/cgi-bin/global.cgi"
             else:
                 base_url = f"http://{device.ip}:{device.port}/cgi-bin/configManager.cgi"
-            
+
             # 使用简化的参数构造
             params = self._build_simple_params(command)
             url = f"{base_url}?{params}"
-            
-            print(f"[FixedAsyncExecutor] 发送请求到: {url}")
-            
-            # 使用requests的Digest认证（已验证成功）
+
+            logger.info(f"发送请求到: {url}")
+
+            # 使用requests的Digest认证
             auth = HTTPDigestAuth(device.username, device.password)
-            
-            response = requests.get(url, auth=auth, verify=False, timeout=30)
-            
+
+            response = session.get(
+                url,
+                auth=auth,
+                verify=self.verify_ssl,
+                timeout=self.request_timeout,
+            )
+
             if response.status_code == 200:
-                print(f"[FixedAsyncExecutor] 请求成功: {response.text}")
+                logger.info(f"请求成功: {response.text[:500]}")
                 return True, response.text, "SUCCESS", dict(response.headers), ""
             else:
                 error_msg = f"HTTP {response.status_code}: {response.reason}"
-                print(f"[FixedAsyncExecutor] 请求失败: {error_msg}")
-                
+                logger.warning(f"请求失败: {error_msg}")
+
                 # 检查认证要求
                 www_auth = response.headers.get('WWW-Authenticate', '')
                 if www_auth:
-                    print(f"[FixedAsyncExecutor] 认证要求: {www_auth}")
-                
+                    logger.warning(f"认证要求: {www_auth}")
+
                 return False, "", "FAILED", dict(response.headers), error_msg
-                
+
         except requests.Timeout:
             error_msg = "请求超时"
-            print(f"[FixedAsyncExecutor] {error_msg}")
+            logger.error(error_msg)
             return False, "", "FAILED", {}, error_msg
-            
+
         except Exception as e:
             error_msg = f"请求异常: {str(e)}"
-            print(f"[FixedAsyncExecutor] {error_msg}")
+            logger.error(error_msg)
             return False, "", "FAILED", {}, error_msg
-    
+
+    def close(self) -> None:
+        """关闭底层的 requests Session"""
+        if self._session is not None:
+            try:
+                self._session.close()
+            except Exception:
+                pass
+            self._session = None
+
     def _build_simple_params(self, command: Dict[str, Any]) -> str:
         """构造简化的参数"""
         action = command.get("action", "")
-        
+
         if action == "setConfig":
             # 对于setConfig命令，检查param字段的结构
             param = command.get("param", {})
-            
-            # 如果param是简单的键值对（如{"VideoWidget[0].CustomTitle[1].EncodeBlend": "true"}），
-            # 则直接使用urlencode而不是复杂的_dahua_params
+
+            # 如果param是简单的键值对，直接构造
             if param and isinstance(param, dict) and len(param) == 1:
                 first_key = list(param.keys())[0]
                 first_value = param[first_key]
-                
-                # 检查是否是简单的键值对格式（如包含[0]索引的复杂键名）
+
+                # 检查是否是简单的键值对格式
                 if isinstance(first_value, str) and '[' in first_key:
-                    # 对于这种格式，直接构造参数：action=setConfig&VideoWidget[0].CustomTitle[1].EncodeBlend=true
                     return f"action=setConfig&{first_key}={first_value}"
                 else:
-                    # 对于复杂结构，使用_dahua_params
                     return self._build_dahua_params(command)
             else:
-                # 对于复杂结构，使用_dahua_params
                 return self._build_dahua_params(command)
         elif action == "getCurrentTime":
-            # 对于getCurrentTime命令，使用简单的action参数
             return "action=getCurrentTime"
         else:
-            # 对于其他命令，使用urlencode
             return urllib.parse.urlencode(command, doseq=True)
-    
+
     def _build_dahua_params(self, command: Dict[str, Any]) -> str:
         """构造大华设备标准参数格式"""
         param = command.get("param", {})
         params = ["action=setConfig"]
-        
+
         # 扁平化参数处理
         for key, value in param.items():
             if isinstance(value, list):
@@ -139,11 +188,9 @@ class SyncRequestsExecutor:
                                 param_str = f"{key}[{i}][{sub_key}]={sub_value}"
                                 params.append(param_str)
                     else:
-                        # 处理简单值列表
                         param_str = f"{key}[{i}]={item}"
                         params.append(param_str)
             elif isinstance(value, dict):
-                # 处理嵌套字典
                 for sub_key, sub_value in value.items():
                     if isinstance(sub_value, dict):
                         for sub_sub_key, sub_sub_value in sub_value.items():
@@ -153,22 +200,34 @@ class SyncRequestsExecutor:
                         param_str = f"{key}[{sub_key}]={sub_value}"
                         params.append(param_str)
             else:
-                # 处理简单键值对
                 param_str = f"{key}={value}"
                 params.append(param_str)
-        
+
         return "&".join(params)
 
 
 class AsyncExecutor:
-    """修复后的异步执行器，使用requests + asyncio线程池"""
+    """
+    异步执行器，使用 requests + asyncio 线程池
+    内部维护 ThreadPoolExecutor(max_workers=50) 用于并发执行同步请求
+    """
 
-    def __init__(self, timeout=30, verify_ssl=False, max_connections=100, auth_method='digest'):
+    def __init__(
+        self,
+        timeout: int = 30,
+        verify_ssl: bool = True,
+        max_connections: int = 100,
+        auth_method: str = 'digest',
+    ):
         self.timeout = timeout
         self.verify_ssl = verify_ssl
         self.max_connections = max_connections
         self.auth_method = auth_method
-        self.sync_executor = SyncRequestsExecutor()
+        self.sync_executor = SyncRequestsExecutor(
+            verify_ssl=verify_ssl,
+            request_timeout=timeout,
+        )
+        self._thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
         self._closed = False
 
     async def __aenter__(self):
@@ -177,99 +236,142 @@ class AsyncExecutor:
     async def __aexit__(self, exc_type, exc, tb):
         await self.close()
 
-    async def close(self):
+    def _get_thread_pool(self) -> concurrent.futures.ThreadPoolExecutor:
+        """惰性创建固定线程池"""
+        if self._thread_pool is None:
+            self._thread_pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=50,
+                thread_name_prefix="async_executor",
+            )
+        return self._thread_pool
+
+    async def close(self) -> None:
+        """优雅关闭：关闭线程池和 sync_executor"""
         self._closed = True
+        if self._thread_pool is not None:
+            self._thread_pool.shutdown(wait=True)
+            self._thread_pool = None
+        self.sync_executor.close()
 
     async def send_command_async(self, device, command):
         """
         异步发送命令，使用线程池执行同步requests请求
-        
+
         Args:
             device: 设备信息对象
             command: 命令字典
-            
+
         Returns:
             Tuple[成功标志, 响应文本, 状态, 数据, 错误信息]
         """
-        # 安全获取事件循环：如果当前线程没有事件循环，则创建新的事件循环
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            # 当前线程没有事件循环，创建新的事件循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+        pool = self._get_thread_pool()
+
         # 在线程池中执行同步请求
-        return await loop.run_in_executor(
-            None, 
-            self.sync_executor.send_command_sync, 
-            device, 
-            command
+        return await asyncio.get_event_loop().run_in_executor(
+            pool,
+            self.sync_executor.send_command_sync,
+            device,
+            command,
         )
 
 
 class AsyncIOManager:
-    """基于requests库的异步管理器，提供与原有接口兼容的异步执行功能"""
+    """
+    基于requests库的异步管理器，提供与原有接口兼容的异步执行功能
+    内部维护 ThreadPoolExecutor(max_workers=50) 用于并发执行同步请求
+    """
 
-    def __init__(self, timeout=30, verify_ssl=False, max_connections=100, auth_method='digest'):
+    def __init__(
+        self,
+        timeout: int = 30,
+        verify_ssl: bool = True,
+        max_connections: int = 100,
+        auth_method: str = 'digest',
+    ):
         self.timeout = timeout
         self.verify_ssl = verify_ssl
         self.max_connections = max_connections
         self.auth_method = auth_method
-        self.sync_executor = SyncRequestsExecutor()
+        self.sync_executor = SyncRequestsExecutor(
+            verify_ssl=verify_ssl,
+            request_timeout=timeout,
+        )
+        self._thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
         self._closed = False
+
+    def _get_thread_pool(self) -> concurrent.futures.ThreadPoolExecutor:
+        """惰性创建固定线程池"""
+        if self._thread_pool is None:
+            self._thread_pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=50,
+                thread_name_prefix="async_io_manager",
+            )
+        return self._thread_pool
 
     def run_coroutine(self, coro):
         """运行协程（兼容原有接口）"""
-        import asyncio
         return asyncio.run(coro)
 
     def send_command(self, device, command):
-        """兼容同步调用：提交异步发送并返回 Future（已弃用，请使用send_command_async）"""
+        """
+        兼容同步调用：提交异步发送并返回结果
+        注意：此方法会阻塞等待结果，保持与原有接口兼容
+        """
         import asyncio
-        import concurrent.futures
-        
+        import concurrent.futures as cf
+
         async def async_send():
             return await self.send_command_async(device, command)
-        
-        # 返回concurrent.futures.Future对象，调用者需要正确处理Future
-        future = asyncio.run_coroutine_threadsafe(async_send(), asyncio.get_event_loop())
-        
-        # 立即等待Future完成，避免协程未被等待的警告
-        try:
-            return future.result(timeout=self.timeout)
-        except concurrent.futures.TimeoutError:
-            return False, "请求超时", "TIMEOUT", {}, ""
-        except Exception as e:
-            return False, f"异步请求异常: {e}", "EXCEPTION", {}, str(e)[:200]
 
-    async def send_command_async(self, device, command, use_url_auth=False):
-        """异步发送命令，使用线程池执行同步requests请求"""
-        import asyncio
-        
-        # 安全获取事件循环：如果当前线程没有事件循环，则创建新的事件循环
         try:
+            # 检查当前事件循环状态
             loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果事件循环正在运行，使用线程池执行
+                pool = self._get_thread_pool()
+                future = pool.submit(asyncio.run, async_send())
+                return future.result(timeout=self.timeout)
         except RuntimeError:
-            # 当前线程没有事件循环，创建新的事件循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+            pass
+
+        # 默认：直接运行协程
+        return asyncio.run(async_send())
+
+    async def send_command_async(
+        self, device, command, use_url_auth: bool = False
+    ):
+        """
+        异步发送命令，使用线程池执行同步requests请求
+
+        Args:
+            device: 设备信息对象
+            command: 命令字符串或字典
+            use_url_auth: 是否使用URL内嵌认证（旧兼容模式）
+
+        Returns:
+            Tuple[成功标志, 响应文本, 状态, 数据, 错误信息]
+        """
+        pool = self._get_thread_pool()
+
         # 在线程池中执行同步请求
-        result = await loop.run_in_executor(
-            None, 
-            self.sync_executor.send_command_sync, 
-            device, 
-            command
+        result = await asyncio.get_event_loop().run_in_executor(
+            pool,
+            self.sync_executor.send_command_sync,
+            device,
+            command,
         )
-        
+
         # 转换返回格式以兼容原有接口
         ok, text, status, headers, error = result
         return (ok, text, status, headers, error)
 
-    def close(self, wait=True):
-        """关闭管理器"""
+    def close(self, wait: bool = True) -> None:
+        """关闭管理器：优雅关闭线程池和 sync_executor"""
         self._closed = True
+        if self._thread_pool is not None:
+            self._thread_pool.shutdown(wait=wait)
+            self._thread_pool = None
+        self.sync_executor.close()
 
 
 # 示例：如何并发发送多条命令

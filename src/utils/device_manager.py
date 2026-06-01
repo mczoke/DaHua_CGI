@@ -75,7 +75,6 @@ class DeviceLoader:
         """从Excel加载设备"""
         try:
             self.log_manager.log_detailed(f"开始加载Excel文件: {file_path}", "INFO")
-            print(f"加载Excel文件: {file_path}")
             
             self.excel_source_file = file_path
             self.loaded_time = datetime.now()
@@ -87,7 +86,6 @@ class DeviceLoader:
             if total_rows == 0:
                 raise ValueError("Excel文件为空")
             
-            print(f"读取到 {total_rows} 行数据")
             self.log_manager.log_detailed(f"Excel文件读取完成，共{total_rows}行", "INFO")
             
             self.devices.clear()
@@ -106,14 +104,12 @@ class DeviceLoader:
                     valid_rows += 1
             
             self.log_manager.log_detailed(f"成功解析 {valid_rows} 台有效设备", "INFO")
-            print(f"成功加载 {valid_rows} 台设备")
             
             return self.devices, valid_rows
             
         except Exception as e:
             error_msg = f"加载Excel失败: {str(e)}"
             self.log_manager.log_detailed(error_msg, "ERROR")
-            print(error_msg)
             raise
     
     def _analyze_columns(self, df):
@@ -214,8 +210,8 @@ class DeviceDetector:
         if self.log_callback:
             try:
                 self.log_callback(message, level)
-            except:
-                pass
+            except Exception as cb_err:
+                self.log_manager.log_detailed(f"日志回调异常: {cb_err}", "ERROR")
         
         # 注意：这里不记录到文件，因为GUI日志应该是处理后的进度信息
     
@@ -352,8 +348,9 @@ class ConfigExecutor:
         self.config = config
         self.log_manager = log_manager
         self.log_callback = log_callback
-        self.config_concurrent = config.get("config_concurrent", 30)  # 进一步提高默认并发数到30
-        self.timeout = config.get("timeout", 3000) / 1000.0  # 增加超时时间到3秒
+        self.config_concurrent = config.get("config_concurrent", 30)
+        self.timeout = config.get("timeout", 3000) / 1000.0
+        self.verify_ssl = config.get('verify_ssl', True)
         self.auth_method = config.get("auth_method", "digest")
         self.session = self._create_session()
         self._stop_flag = threading.Event()  # 停止标志
@@ -373,7 +370,7 @@ class ConfigExecutor:
         if self.use_async:
             try:
                 # AsyncIOManager 会在后台线程启动事件循环并创建 aiohttp session
-                self.async_manager = AsyncIOManager(timeout=self.timeout, verify_ssl=self.config.get('verify_ssl', False), max_connections=300, auth_method=self.auth_method)  # 进一步提高连接池到300
+                self.async_manager = AsyncIOManager(timeout=self.timeout, verify_ssl=self.config.get('verify_ssl', True), max_connections=300, auth_method=self.auth_method)  # 进一步提高连接池到300
                 self._async_semaphore = asyncio.Semaphore(self.config_concurrent)  # 设备级别的共享信号量
                 self._async_command_semaphore = asyncio.Semaphore(self.config_concurrent * 2)  # 命令级别的信号量，允许更多并发
                 self._log(f"AsyncIOManager 已初始化，设备并发数: {self.config_concurrent}，命令并发数: {self.config_concurrent * 2}", "DEBUG")
@@ -391,8 +388,8 @@ class ConfigExecutor:
         if self.log_callback:
             try:
                 self.log_callback(message, level)
-            except:
-                pass
+            except Exception as cb_err:
+                self.log_manager.log_detailed(f"日志回调异常: {cb_err}", "ERROR")
         
         # 记录到文件
         if self.log_manager:
@@ -1627,7 +1624,7 @@ class ConfigExecutor:
                 full_url,
                 auth=auth,
                 timeout=self.timeout,
-                verify=False,
+                verify=self.config.get('verify_ssl', True),
                 headers=headers
             )
             
@@ -1728,214 +1725,3 @@ class ConfigExecutor:
             )
             
             return False, f"请求异常: {str(e)[:100]}"
-
-
-async def _async_config_device(self, device, mode="standard", progress_callback=None, semaphore=None):
-    """异步配置单个设备"""
-    if semaphore is None:
-        # 使用共享的信号量，避免每个任务都创建新的
-        semaphore = self._async_semaphore
-        
-    start_time = datetime.now()
-    success_count = 0
-    failed_count = 0
-    failure_details = []
-    
-    try:
-        # 获取基础命令列表
-        base_commands = self.config.get("cgi_commands", [])
-        if not base_commands:
-            self._log(f"设备 {device.ip} 没有配置CGI命令", "ERROR")
-            return None
-        
-        total_commands = len(base_commands)
-        self._total_tasks = total_commands * len([d for d in self.device_list if d.online])
-        
-        # 使用设备级别的信号量控制设备并发
-        async with semaphore:
-            for i, base_cmd in enumerate(base_commands, 1):
-                if self._is_stopped():
-                    break
-                    
-                # 生成实际执行的命令
-                if mode == "customized" and device.variables:
-                    command = self._generate_custom_command(base_cmd, device.variables)
-                    if not command:
-                        failed_count += 1
-                        failure_details.append(f"命令{i}: 自定义命令生成失败")
-                        continue
-                else:
-                    command = base_cmd
-                
-                device.last_message = f"执行第{i}/{total_commands}条命令"
-        
-                # 使用命令级别的信号量控制命令并发
-                async with self._async_command_semaphore:
-                    try:
-                        # 构建完整的CGI请求URL（与同步路径保持一致）
-                        base_url = f"http://{device.ip}:{device.port}/cgi-bin/configManager.cgi"
-                        encoded_cmd = requests.utils.quote(command, safe='')
-                        display_cmd = encoded_cmd.replace('%20', ' ')
-                        full_url = f"{base_url}?action=setConfig&{encoded_cmd}"
-                        display_url = f"{base_url}?action=setConfig&{display_cmd}"
-                        
-                        # 认证信息
-                        auth_type = "Digest" if self.auth_method == "digest" else "Basic"
-                        
-                        # 请求头信息
-                        headers = {
-                            'User-Agent': 'Mozilla/5.0',
-                            'Accept': '*/*',
-                            'Connection': 'close'
-                        }
-                        
-                        # 记录请求信息（与同步路径保持一致）
-                        self.log_manager.log_cgi_request(
-                            device.ip, i, total_commands, full_url, auth_type, headers, raw_command=command
-                        )
-                        self.log_manager.log_raw_request(
-                            device.ip, i, total_commands, full_url, command, auth_type, headers
-                        )
-                        
-                        # 记录开始时间
-                        request_start = datetime.now()
-                        
-                        # 直接调用 AsyncIOManager 的内部异步发送方法
-                        ok, message = await self.async_manager._send_command_async(device, command)
-                        
-                        # 计算响应时间
-                        request_time = (datetime.now() - request_start).total_seconds()
-                        
-                        # 解析响应结果（模拟同步路径的五元组格式）
-                        if ok:
-                            status_code = 200
-                            response_headers = {}  # 异步路径暂时没有响应头信息
-                            response_body = message if message else "OK"
-                        else:
-                            status_code = "ASYNC_ERROR"
-                            response_headers = {}
-                            response_body = message
-                        
-                        # 记录响应信息（与同步路径保持一致）
-                        if ok:
-                            self.log_manager.log_cgi_response(
-                                device.ip, status_code, request_time, response_headers, 
-                                response_body, success=True, raw_command=command
-                            )
-                            self.log_manager.log_raw_response(
-                                device.ip, status_code, request_time, response_headers, 
-                                response_body, raw_command=command
-                            )
-                        else:
-                            self.log_manager.log_cgi_response(
-                                device.ip, status_code, request_time, response_headers, 
-                                response_body, success=False, raw_command=command
-                            )
-                            self.log_manager.log_raw_response(
-                                device.ip, status_code, request_time, response_headers, 
-                                response_body, raw_command=command
-                            )
-                            
-                    except asyncio.CancelledError:
-                        ok, message = False, '已取消'
-                        # 记录取消异常
-                        request_time = (datetime.now() - request_start).total_seconds()
-                        self.log_manager.log_cgi_response(
-                            device.ip, "CANCELLED", request_time, {}, 
-                            "请求被取消", success=False, raw_command=command
-                        )
-                        self.log_manager.log_raw_response(
-                            device.ip, "CANCELLED", request_time, {}, 
-                            "请求被取消", raw_command=command
-                        )
-                    except Exception as e:
-                        ok, message = False, f'异步请求异常: {e}'
-                        # 记录异常信息
-                        request_time = (datetime.now() - request_start).total_seconds()
-                        self.log_manager.log_cgi_response(
-                            device.ip, "ASYNC_EXCEPTION", request_time, {}, 
-                            f"异步请求异常: {str(e)[:100]}", success=False, raw_command=command
-                        )
-                        self.log_manager.log_raw_response(
-                            device.ip, "ASYNC_EXCEPTION", request_time, {}, 
-                            f"异步请求异常: {str(e)[:100]}", raw_command=command
-                        )
-
-                # 更新统计
-                if ok:
-                    success_count += 1
-                else:
-                    failed_count += 1
-                    failure_details.append(f"命令{i}: {message}")
-                    self.log_manager.log_failure(device, f"命令执行失败: {message}", command)
-
-                # 更新全局已完成计数
-                self._completed_tasks += 1
-
-                # 进度回调
-                if progress_callback:
-                    progress = (self._completed_tasks / self._total_tasks * 100) if self._total_tasks > 0 else 0
-                    stats = {
-                        "completed": self._completed_tasks,
-                        "total": self._total_tasks,
-                        "success": success_count,
-                        "failed": failed_count,
-                        "devices_updated": [{
-                            'index': device.index,
-                            'status': device.status,
-                            'online': device.online,
-                            'message': device.last_message
-                        }]
-                    }
-                    try:
-                        progress_callback("configuring", progress, stats)
-                    except Exception:
-                        pass
-
-        # finalize device state
-        completed_count = success_count + failed_count
-        if self._is_stopped():
-            device.status = "已停止"
-            device.last_message = f"已停止，完成 {completed_count}/{total_commands}条命令"
-        elif not device.online:
-            device.status = "离线"
-            device.last_message = f"执行过程中离线，完成 {completed_count}/{total_commands}条命令"
-        elif completed_count == total_commands:
-            device.status = "成功" if success_count>0 else "失败"
-            device.last_message = f"完成: {completed_count}/{total_commands}命令 (成功:{success_count}, 失败:{failed_count})"
-        else:
-            device.status = "部分完成"
-            device.last_message = f"部分完成: {completed_count}/{total_commands}条命令"
-
-        result = {
-            'device': device,
-            'ip': device.ip,
-            'port': device.port,
-            'success': success_count > 0,
-            'total_commands': total_commands,
-            'success_commands': success_count,
-            'failed_commands': failed_count,
-            'failure_details': "; ".join(failure_details[:3]) if failure_details else None,
-            'start_time': start_time.strftime("%H:%M:%S"),
-            'end_time': datetime.now().strftime("%H:%M:%S"),
-            'total_time': (datetime.now() - start_time).total_seconds()
-        }
-
-        return result
-
-    except Exception as e:
-        self._log(f"设备 {device.ip} 异步配置异常: {e}", "ERROR")
-        self.log_manager.log_failure(device, f"配置异常: {str(e)[:100]}")
-        return {
-            'device': device,
-            'ip': device.ip,
-            'port': device.port,
-            'success': False,
-            'total_commands': 0,
-            'success_commands': 0,
-            'failed_commands': 0,
-            'failure_details': f"配置异常: {str(e)[:100]}",
-            'start_time': start_time.strftime("%H:%M:%S"),
-            'end_time': datetime.now().strftime("%H:%M:%S"),
-            'total_time': (datetime.now() - start_time).total_seconds()
-        }

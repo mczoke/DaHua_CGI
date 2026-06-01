@@ -1,27 +1,67 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 复制自 V9.4.1/utils/log_manager.py
+# V9.5 - 日志级别控制 + 文件轮转(100MB+5备份) + 响应截断
 
+import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 import platform
 import subprocess
 
+
 class LogManager:
-    def __init__(self):
+    """日志管理器 — 支持级别控制、文件轮转、响应截断"""
+
+    MAX_RESPONSE_BYTES = 1024  # log_raw_response 截断阈值
+
+    def __init__(self, log_level="INFO"):
         self.app_dir = self.get_app_directory()
         self.log_dir = os.path.join(self.app_dir, "logs")
+        self._setup_logging(log_level)
+
         self.detailed_log_file = None
         self.failure_log_file = None
         self.excel_result_file = None
         self.setup_logs()
 
+    def _setup_logging(self, log_level):
+        """初始化 Python logging 系统（日志级别 + 轮转）"""
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir, exist_ok=True)
+        level = getattr(logging, log_level.upper(), logging.INFO)
+        # 主日志文件带时间戳，但用 RotatingFileHandler 防无限增长
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        main_log = os.path.join(self.log_dir, f"app_{ts}.log")
+        handler = RotatingFileHandler(
+            main_log,
+            maxBytes=100 * 1024 * 1024,  # 100 MB
+            backupCount=5,
+            encoding="utf-8",
+        )
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        handler.setLevel(level)
+
+        # 避免重复添加 handler
+        root = logging.getLogger()
+        # 移除其他 handler（防止多次 setup_logs 时重复）
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+        root.addHandler(handler)
+        root.setLevel(level)
+        self._logger = root
+
     def get_app_directory(self):
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             return os.path.dirname(sys.executable)
         else:
             return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,94 +71,136 @@ class LogManager:
             os.makedirs(self.log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.detailed_log_file = os.path.join(self.log_dir, f"detailed_{timestamp}.log")
-        with open(self.detailed_log_file, 'w', encoding='utf-8') as f:
+        with open(self.detailed_log_file, "w", encoding="utf-8") as f:
             f.write("日志初始化\n")
         self.failure_log_file = os.path.join(self.log_dir, f"failures_{timestamp}.log")
-        with open(self.failure_log_file, 'w', encoding='utf-8') as f:
+        with open(self.failure_log_file, "w", encoding="utf-8") as f:
             f.write("失败日志\n")
         self.excel_result_file = os.path.join(self.log_dir, f"results_{timestamp}.xlsx")
 
+    # ---------- 统一日志记录 ----------
+
     def log_detailed(self, message, level="INFO"):
+        """写入详细日志文件 + Python logging"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(self.detailed_log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] [{level}] {message}\n")
-        except Exception:
-            pass
+            line = f"[{timestamp}] [{level}] {message}\n"
+            with open(self.detailed_log_file, "a", encoding="utf-8") as f:
+                f.write(line)
+            # 同步到 Python logging
+            py_level = getattr(logging, level.upper(), logging.INFO)
+            self._logger.log(py_level, message)
+        except Exception as e:
+            self._logger.error(f"log_detailed 写入失败: {e}")
 
-    def log_cgi_request(self, device_ip, command_index, total_commands, full_url, auth_type, headers, method="GET", raw_command=""):
-        """记录详细的CGI请求元数据，包含原始命令"""
+    def log_failure(self, device_info, error_message, command=""):
+        """记录失败到失败日志"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"""[{timestamp}] [CGI_REQUEST] 设备 {device_ip} 请求 {command_index}/{total_commands}
-  请求URL: {full_url}
-  原始命令: {raw_command}
-  请求方法: {method}
-  认证方式: {auth_type}
-  请求头: {headers}
-"""
-            with open(self.detailed_log_file, 'a', encoding='utf-8') as f:
+            ip = getattr(device_info, "ip", "") if not isinstance(device_info, str) else device_info
+            line = f"[{timestamp}] 设备 {ip} 失败: {error_message}\n"
+            with open(self.failure_log_file, "a", encoding="utf-8") as f:
+                f.write(line)
+            self._logger.warning(f"设备 {ip} 失败: {error_message}")
+        except Exception as e:
+            self._logger.error(f"log_failure 写入失败: {e}")
+
+    # ---------- CGI 元数据日志 ----------
+
+    def log_cgi_request(self, device_ip, command_index, total_commands,
+                        full_url, auth_type, headers, method="GET", raw_command=""):
+        """记录详细的 CGI 请求元数据"""
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            header_str = str(headers) if len(str(headers)) < 2048 else str(headers)[:2048] + "…(截断)"
+            log_entry = (
+                f"[{timestamp}] [CGI_REQUEST] 设备 {device_ip} 请求 {command_index}/{total_commands}\n"
+                f"  请求URL: {full_url}\n"
+                f"  原始命令: {raw_command}\n"
+                f"  请求方法: {method}\n"
+                f"  认证方式: {auth_type}\n"
+                f"  请求头: {header_str}\n"
+            )
+            with open(self.detailed_log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
-        except Exception:
-            pass
+            self._logger.info(
+                f"[CGI_REQUEST] {device_ip} {command_index}/{total_commands} {auth_type}"
+            )
+        except Exception as e:
+            self._logger.error(f"log_cgi_request 写入失败: {e}")
 
-    def log_cgi_response(self, device_ip, status_code, response_time, response_headers, response_body, success=True, raw_command=""):
-        """记录详细的CGI响应元数据，包含原始命令"""
+    def log_cgi_response(self, device_ip, status_code, response_time,
+                         response_headers, response_body, success=True, raw_command=""):
+        """记录详细的 CGI 响应元数据"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             status_level = "SUCCESS" if success else "ERROR"
-            # 记录完整的响应内容，不截断
-            response_content = response_body if response_body else '空'
-            log_entry = f"""[{timestamp}] [CGI_RESPONSE] 设备 {device_ip} 响应
-  原始命令: {raw_command}
-  状态码: {status_code}
-  响应时间: {response_time:.2f}s
-  响应头: {response_headers}
-  响应内容: {response_content}
-"""
-            with open(self.detailed_log_file, 'a', encoding='utf-8') as f:
+            body = response_body if response_body else "空"
+            # 截断响应 > 1KB
+            if len(body) > self.MAX_RESPONSE_BYTES:
+                body = body[: self.MAX_RESPONSE_BYTES] + "…(截断)"
+            header_str = str(response_headers) if len(str(response_headers)) < 2048 else str(response_headers)[:2048] + "…(截断)"
+            log_entry = (
+                f"[{timestamp}] [{status_level}] [CGI_RESPONSE] 设备 {device_ip} 响应\n"
+                f"  原始命令: {raw_command}\n"
+                f"  状态码: {status_code}\n"
+                f"  响应时间: {response_time:.2f}s\n"
+                f"  响应头: {header_str}\n"
+                f"  响应内容: {body}\n"
+            )
+            with open(self.detailed_log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
-        except Exception:
-            pass
+        except Exception as e:
+            self._logger.error(f"log_cgi_response 写入失败: {e}")
 
-    def log_raw_request(self, device_ip, command_index, total_commands, full_url, raw_command, auth_type, headers, method="GET"):
-        """记录原始请求数据，包含完整的URL和命令"""
+    def log_raw_request(self, device_ip, command_index, total_commands,
+                        full_url, raw_command, auth_type, headers, method="GET"):
+        """记录原始请求数据"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"""[{timestamp}] [RAW_REQUEST] 设备 {device_ip} 原始请求 {command_index}/{total_commands}
-  完整URL: {full_url}
-  原始命令: {raw_command}
-  认证方式: {auth_type}
-  请求头: {headers}
-"""
-            with open(self.detailed_log_file, 'a', encoding='utf-8') as f:
+            header_str = str(headers) if len(str(headers)) < 2048 else str(headers)[:2048] + "…(截断)"
+            log_entry = (
+                f"[{timestamp}] [RAW_REQUEST] 设备 {device_ip} 原始请求 {command_index}/{total_commands}\n"
+                f"  完整URL: {full_url}\n"
+                f"  原始命令: {raw_command}\n"
+                f"  认证方式: {auth_type}\n"
+                f"  请求头: {header_str}\n"
+            )
+            with open(self.detailed_log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
-        except Exception:
-            pass
+            self._logger.debug(f"[RAW_REQUEST] {device_ip} {command_index}/{total_commands}")
+        except Exception as e:
+            self._logger.error(f"log_raw_request 写入失败: {e}")
 
-    def log_raw_response(self, device_ip, status_code, response_time, response_headers, response_body, raw_command=""):
-        """记录原始响应数据，包含完整的响应内容"""
+    def log_raw_response(self, device_ip, status_code, response_time,
+                         response_headers, response_body, raw_command=""):
+        """记录原始响应数据 — 超过 1KB 自动截断"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"""[{timestamp}] [RAW_RESPONSE] 设备 {device_ip} 原始响应
-  原始命令: {raw_command}
-  状态码: {status_code}
-  响应时间: {response_time:.2f}s
-  响应头: {response_headers}
-  完整响应内容: {response_body if response_body else '空'}
-"""
-            with open(self.detailed_log_file, 'a', encoding='utf-8') as f:
+            body = response_body if response_body else "空"
+            need_trunc = len(body) > self.MAX_RESPONSE_BYTES
+            if need_trunc:
+                body = body[: self.MAX_RESPONSE_BYTES] + "…(截断)"
+            header_str = str(response_headers) if len(str(response_headers)) < 2048 else str(response_headers)[:2048] + "…(截断)"
+            trunc_tag = " (截断)" if need_trunc else ""
+            log_entry = (
+                f"[{timestamp}] [RAW_RESPONSE] 设备 {device_ip} 原始响应{trunc_tag}\n"
+                f"  原始命令: {raw_command}\n"
+                f"  状态码: {status_code}\n"
+                f"  响应时间: {response_time:.2f}s\n"
+                f"  响应头: {header_str}\n"
+                f"  完整响应内容: {body}\n"
+            )
+            with open(self.detailed_log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
-        except Exception:
-            pass
+            msg = f"[RAW_RESPONSE] {device_ip} {status_code} {response_time:.2f}s"
+            if need_trunc:
+                msg += f" (响应 {len(response_body)}B → {self.MAX_RESPONSE_BYTES}B 截断)"
+            self._logger.debug(msg)
+        except Exception as e:
+            self._logger.error(f"log_raw_response 写入失败: {e}")
 
-    def log_failure(self, device_info, error_message, command=""):
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(self.failure_log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] 设备 {getattr(device_info, 'ip', '')} 失败: {error_message}\n")
-        except Exception:
-            pass
+    # ---------- Excel 导出 ----------
 
     def export_excel_results(self, devices, excel_source_file):
         try:
@@ -129,41 +211,40 @@ class LogManager:
             for col_idx, header in enumerate(headers, 1):
                 ws.cell(row=1, column=col_idx, value=header)
             for row_idx, device in enumerate(devices, 2):
-                ws.cell(row=row_idx, column=1, value=row_idx-1)
+                ws.cell(row=row_idx, column=1, value=row_idx - 1)
                 ws.cell(row=row_idx, column=2, value=device.ip)
             wb.save(self.excel_result_file)
             return self.excel_result_file
-        except Exception:
+        except Exception as e:
+            self._logger.error(f"export_excel_results 失败: {e}")
             return None
 
+    # ---------- 日志文件快捷操作 ----------
+
     def open_failure_logs(self):
-        """打开失败日志文件"""
         try:
             if os.path.exists(self.failure_log_file):
-                if platform.system() == "Windows":
-                    os.startfile(self.failure_log_file)
-                elif platform.system() == "Darwin":
-                    subprocess.run(["open", self.failure_log_file])
-                else:
-                    subprocess.run(["xdg-open", self.failure_log_file])
+                self._open_file(self.failure_log_file)
                 return True
-            else:
-                return False
+            return False
         except Exception:
             return False
 
     def open_log_directory(self):
-        """打开日志目录"""
         try:
             if os.path.exists(self.log_dir):
-                if platform.system() == "Windows":
-                    os.startfile(self.log_dir)
-                elif platform.system() == "Darwin":
-                    subprocess.run(["open", self.log_dir])
-                else:
-                    subprocess.run(["xdg-open", self.log_dir])
+                self._open_file(self.log_dir)
                 return True
-            else:
-                return False
+            return False
         except Exception:
             return False
+
+    @staticmethod
+    def _open_file(path):
+        """平台无关的文件/目录打开"""
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", path])
+        else:
+            subprocess.run(["xdg-open", path])
