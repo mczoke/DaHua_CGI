@@ -10,11 +10,10 @@ import time
 import threading
 import asyncio
 
-sys.path.insert(0, r"C:\Users\Administrator\Desktop\CGI\V9.5")
 
 from aiohttp import web
-from src.utils.device_manager import ConfigExecutor, DeviceInfo
-from src.utils.log_manager import LogManager
+from utils.device_manager import ConfigExecutor, DeviceInfo
+from utils.log_manager import LogManager
 
 
 def start_mock_server_thread():

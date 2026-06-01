@@ -4,10 +4,9 @@ import time
 import threading
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, r"C:\Users\Administrator\Desktop\CGI\V9.5")
 
-from src.utils.device_manager import ConfigExecutor, DeviceInfo
-from src.utils.log_manager import LogManager
+from utils.device_manager import ConfigExecutor, DeviceInfo
+from utils.log_manager import LogManager
 import tests.test_with_mock_server as tw
 
 

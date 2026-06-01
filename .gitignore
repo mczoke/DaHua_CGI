@@ -1,7 +1,23 @@
-venv/
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.env
-.DS_Store
-logs/*.log
+*.egg-info/
+*.egg
+
+# Logs
+logs/
+src/logs/
+
+# Backups
+backups/
+
+# Virtual environment
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Config
+src/config/config.yaml

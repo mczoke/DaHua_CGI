@@ -5,8 +5,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.device_manager import ConfigExecutor, DeviceInfo
-from src.utils.log_manager import LogManager
+from utils.device_manager import ConfigExecutor, DeviceInfo
+from utils.log_manager import LogManager
 
 # Simple devices: use localhost or dummy IPs; set online=True to simulate
 @pytest.fixture
