@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.device_manager import ConfigExecutor, DeviceInfo
 from utils.log_manager import LogManager
-import tests.test_with_mock_server as tw
+import src.tests.test_with_mock_server as tw
 
 
 def run_executor_and_stop():
