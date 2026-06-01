@@ -1,5 +1,35 @@
 # 变更日志
 
+## [V9.6-alpha] - 2026-06-01
+### 配置管理重构 (Task1 - Claw-CodeX)
+- 新建 `src/config/config.yaml` 作为主配置源（双源加载: yaml优先, 环境变量覆盖）
+- `ConfigManager` 重构，兼容旧 json 配置
+- `CGIReferenceManager` 完善参数库默认值
+- 消除所有硬编码 IP/密码
+
+### 异步执行器优化 (Task2 - Claw-Claude)
+- `SyncRequestsExecutor` 添加重试机制 (Retry total=3, backoff_factor=0.5)
+- `AsyncExecutor`/`AsyncIOManager` 添加固定 `ThreadPoolExecutor(max_workers=50)`
+- `verify_ssl` 默认改为 True，通过配置控制
+- 清理重复 executor 文件
+
+### 异常处理&日志优化 (Task3 - Claw-CodeX)
+- `log_manager.py` 添加日志级别控制 + 文件轮转
+- `log_raw_response` 截断 >1KB
+- 消除所有 `except: pass`，替换为错误记录
+- 全部 `print()` 替换为 logging
+
+### 全模块代码清理 (Task4 - Claw-Claude)
+- `device_manager.py` ConfigExecutor 去重合并精简
+- 核心 4 模块添加完整类型注解
+- 清理调试脚本 (`debug_*.py`, `diagnose_*.py`)
+- 创建 Linux 兼容 `run_tests.sh`
+
+### 环境修复 (Hermes)
+- venv 修复：安装 pytest/requests/pandas 等依赖
+- 代理下载 numpy 2.4.6 + pandas 3.0.3
+- 测试验证：2/2 pytest 通过
+
 ## [V9.5] - 2026-05-22
 - 项目初始化迁移
 - 创建虚拟环境
