@@ -50,7 +50,7 @@ class DeviceInfo:
     excel_row: int = 0
     last_message: str = ""
     
-    def get_display_info(self):
+    def get_display_info(self) -> str:
         """获取显示信息"""
         info = f"{self.ip}:{self.port}"
         if self.variables.get("设备名称"):
@@ -65,13 +65,13 @@ class DeviceInfo:
 class DeviceLoader:
     """设备加载器"""
     
-    def __init__(self, log_manager):
+    def __init__(self, log_manager) -> None:
         self.log_manager = log_manager
         self.devices: List[DeviceInfo] = []
         self.excel_source_file = ""
         self.loaded_time = None
     
-    def load_from_excel(self, file_path, mode="standard"):
+    def load_from_excel(self, file_path: str, mode: str = "standard") -> tuple:
         """从Excel加载设备"""
         try:
             self.log_manager.log_detailed(f"开始加载Excel文件: {file_path}", "INFO")
@@ -112,7 +112,7 @@ class DeviceLoader:
             self.log_manager.log_detailed(error_msg, "ERROR")
             raise
     
-    def _analyze_columns(self, df):
+    def _analyze_columns(self, df) -> dict:
         """分析Excel列结构"""
         column_mapping = {}
         
@@ -139,7 +139,7 @@ class DeviceLoader:
         
         return column_mapping
     
-    def _parse_row(self, idx, row, column_mapping, mode):
+    def _parse_row(self, idx, row, column_mapping, mode) -> Optional[object]: # type: ignore[return]
         """解析单行数据"""
         try:
             ip_col = column_mapping.get('ip')
@@ -173,7 +173,7 @@ class DeviceLoader:
             self.log_manager.log_detailed(f"解析第{idx+1}行失败: {e}", "WARNING")
             return None
     
-    def _extract_variables(self, row):
+    def _extract_variables(self, row) -> dict:
         """提取变量"""
         variables = {}
         for col, value in row.items():
@@ -191,7 +191,7 @@ class DeviceLoader:
 class DeviceDetector:
     """设备检测器"""
     
-    def __init__(self, config, log_manager, log_callback=None):
+    def __init__(self, config, log_manager, log_callback=None) -> None:
         self.config = config
         self.log_manager = log_manager
         self.log_callback = log_callback
@@ -200,7 +200,7 @@ class DeviceDetector:
         self.config_concurrent = config.get("config_concurrent", 5)
         self.ping_count = 1
     
-    def _log(self, message, level="INFO"):
+    def _log(self, message, level="INFO") -> None:
         """统一的GUI日志记录方法 - 仅用于显示处理后的进度信息"""
         # 过滤进度相关的日志
         if "进度" in message and level in ["DEBUG", "INFO"]:
@@ -215,7 +215,7 @@ class DeviceDetector:
         
         # 注意：这里不记录到文件，因为GUI日志应该是处理后的进度信息
     
-    def detect_devices(self, devices, progress_callback=None, stop_callback=None):
+    def detect_devices(self, devices, progress_callback=None, stop_callback=None) -> tuple:
         """纯Ping检测"""
         total_devices = len(devices)
         self._log(f"开始Ping检测 {total_devices} 台设备", "INFO")
@@ -301,7 +301,7 @@ class DeviceDetector:
         
         return online_count, offline_count
     
-    def _fast_ping(self, ip):
+    def _fast_ping(self, ip) -> bool:
         """快速Ping检测"""
         try:
             if platform.system().lower() == "windows":
@@ -344,7 +344,7 @@ class DeviceDetector:
 class ConfigExecutor:
     """配置执行器 - v9.4.8 严格设备状态管理，扩展为支持异步发送"""
     
-    def __init__(self, config, log_manager, log_callback=None, use_async=False):
+    def __init__(self, config, log_manager, log_callback=None, use_async=False) -> None:
         self.config = config
         self.log_manager = log_manager
         self.log_callback = log_callback
@@ -378,7 +378,7 @@ class ConfigExecutor:
                 self._log("初始化 AsyncIOManager 失败，回退到同步模式", "WARNING")
                 self.async_manager = None
 
-    def _log(self, message, level="INFO"):
+    def _log(self, message, level="INFO") -> None:
         """统一的日志记录方法"""
         # 过滤进度相关的日志
         if "进度" in message and level in ["DEBUG", "INFO"]:
@@ -395,7 +395,7 @@ class ConfigExecutor:
         if self.log_manager:
             self.log_manager.log_detailed(message, level)
 
-    def _create_session(self):
+    def _create_session(self) -> requests.Session:
         """创建HTTP会话"""
         session = requests.Session()
         retry_strategy = Retry(
@@ -412,7 +412,7 @@ class ConfigExecutor:
         session.mount("https://", adapter)
         return session
 
-    def stop(self):
+    def stop(self) -> None:
         """停止配置 - 完全停止"""
         self._log("正在停止所有配置任务...", "WARNING")
         self._stop_flag.set()
@@ -452,11 +452,11 @@ class ConfigExecutor:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._log("线程池已关闭", "WARNING")
 
-    def _is_stopped(self):
+    def _is_stopped(self) -> bool:
         """检查是否已停止"""
         return self._stop_flag.is_set()
 
-    def _check_and_mark_device_processing(self, device):
+    def _check_and_mark_device_processing(self, device) -> bool:
         """检查并标记设备为处理中（线程安全）"""
         with self._device_lock:
             if device.ip in self._device_processing:
@@ -464,13 +464,13 @@ class ConfigExecutor:
             self._device_processing.add(device.ip)
             return True
 
-    def _unmark_device_processing(self, device):
+    def _unmark_device_processing(self, device) -> None:
         """取消设备的处理标记（线程安全）"""
         with self._device_lock:
             if device.ip in self._device_processing:
                 self._device_processing.remove(device.ip)
 
-    def _is_device_eligible_for_config(self, device):
+    def _is_device_eligible_for_config(self, device) -> bool:
         """检查设备是否符合配置条件（严格检查）"""
         # 检查设备在线状态
         if not device.online:
@@ -491,7 +491,7 @@ class ConfigExecutor:
         
         return True
 
-    def _configure_device_strict_wrapper(self, device, mode="standard", progress_callback=None):
+    def _configure_device_strict_wrapper(self, device, mode="standard", progress_callback=None) -> dict:
         """设备配置的包装方法，确保异常时清理标记"""
         try:
             result = self._configure_device_strict(device, mode, progress_callback)
@@ -502,13 +502,13 @@ class ConfigExecutor:
             self._unmark_device_processing(device)
             raise
 
-    def _cleanup_device_processing(self):
+    def _cleanup_device_processing(self) -> None:
         """清理所有设备处理标记"""
         with self._device_lock:
             self._device_processing.clear()
 
     def execute_batch(self, devices, mode="standard", exec_strategy="device_first", 
-                     progress_callback=None, stop_callback=None, total_tasks=None):
+                     progress_callback=None, stop_callback=None, total_tasks=None) -> dict:
         """批量执行配置 - 严格跳过离线设备"""
         # 重置停止标志
         self._stop_flag.clear()
@@ -604,7 +604,7 @@ class ConfigExecutor:
             self._futures = []
             self._cleanup_device_processing()
 
-    def _execute_by_device_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None):
+    def _execute_by_device_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
         """严格版：按设备执行，只处理在线设备"""
         results = []
         total_devices = len(devices)
@@ -698,7 +698,7 @@ class ConfigExecutor:
         
         return results
     
-    def _configure_device_strict(self, device, mode="standard", progress_callback=None):
+    def _configure_device_strict(self, device, mode="standard", progress_callback=None) -> dict:
         """严格版：为设备执行配置，确保设备在线"""
         start_time = datetime.now()
         
@@ -878,7 +878,7 @@ class ConfigExecutor:
                 'total_time': (datetime.now() - start_time).total_seconds()
             }
 
-    def _execute_by_command_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None):
+    def _execute_by_command_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
         """严格版：按命令执行，只处理在线设备"""
         # 创建线程池
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.config_concurrent)
@@ -1052,7 +1052,7 @@ class ConfigExecutor:
         
         return results
 
-    def _get_devices_update_info(self, devices):
+    def _get_devices_update_info(self, devices) -> list:
         """获取设备更新信息，返回使用设备自身索引以保持与主列表的一致性"""
         devices_updated = []
         for device in devices:
@@ -1066,7 +1066,7 @@ class ConfigExecutor:
 
 
     # ====================== 异步实现 (asyncio) ==============================
-    async def _async_config_device(self, device, mode="standard", progress_callback=None, semaphore=None):
+    async def _async_config_device(self, device, mode="standard", progress_callback=None, semaphore=None) -> Optional[dict]:
         """异步版的设备配置方法"""
         start_time = datetime.now()
         
@@ -1199,7 +1199,7 @@ class ConfigExecutor:
                 'total_time': (datetime.now() - start_time).total_seconds()
             }
 
-    async def _async_send_command_with_url_auth(self, device, command, cmd_index, total_commands):
+    async def _async_send_command_with_url_auth(self, device, command, cmd_index, total_commands) -> tuple:
         """使用URL认证方式发送命令"""
         try:
             # 构建带认证信息的URL
@@ -1264,7 +1264,7 @@ class ConfigExecutor:
             self._log(f"设备 {device.ip} {error_msg}", "ERROR")
             return False, error_msg
 
-    async def _async_execute_by_device(self, devices, mode="standard", progress_callback=None, stop_callback=None):
+    async def _async_execute_by_device(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
         """异步版的设备优先执行逻辑，在 AsyncIOManager 的事件循环中执行。"""
         results = []
         total_devices = len(devices)
@@ -1324,7 +1324,7 @@ class ConfigExecutor:
         return results
 
 
-    async def _async_execute_by_command(self, devices, mode="standard", progress_callback=None, stop_callback=None):
+    async def _async_execute_by_command(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
         """异步版的命令优先策略实现：对每条命令并发执行到所有在线设备。"""
         self._log(f"[async] 使用命令优先策略，将对 {len(devices)} 台设备执行命令", "INFO")
 
@@ -1464,7 +1464,7 @@ class ConfigExecutor:
 
     # ====================== 异步实现结束 ==============================
 
-    def _generate_custom_command(self, base_cmd, variables):
+    def _generate_custom_command(self, base_cmd, variables) -> Optional[dict]:
         """生成自定义命令"""
         custom_cmd = base_cmd
         
@@ -1488,7 +1488,7 @@ class ConfigExecutor:
         
         return custom_cmd
 
-    def _send_command(self, device, command, cmd_index, total_commands):
+    def _send_command(self, device, command, cmd_index, total_commands) -> tuple:
         """发送单个CGI命令"""
         try:
             # 发送命令前再次检查设备是否在线

@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 try:
     import yaml
@@ -23,14 +24,14 @@ class ConfigManager:
     # ========== 路径工具 ==========
 
     @staticmethod
-    def get_app_directory():
+    def get_app_directory() -> str:
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
         else:
             return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     @staticmethod
-    def get_config_directory():
+    def get_config_directory() -> str:
         app_dir = ConfigManager.get_app_directory()
         config_dir = os.path.join(app_dir, "config")
         if not os.path.exists(config_dir):
@@ -38,17 +39,17 @@ class ConfigManager:
         return config_dir
 
     @staticmethod
-    def get_config_yaml_path():
+    def get_config_yaml_path() -> str:
         return os.path.join(ConfigManager.get_config_directory(), "config.yaml")
 
     @staticmethod
-    def get_config_json_path():
+    def get_config_json_path() -> str:
         return os.path.join(ConfigManager.get_config_directory(), "dahua_config.json")
 
     # ========== 默认值 ==========
 
     @staticmethod
-    def get_default_config():
+    def get_default_config() -> Dict[str, Any]:
         return {
             "cgi_commands": ConfigManager.get_default_cgi_commands(),
             "variable_mappings": {},
@@ -70,7 +71,7 @@ class ConfigManager:
         }
 
     @staticmethod
-    def get_default_cgi_commands():
+    def get_default_cgi_commands() -> List[str]:
         return [
             "VideoWidget[0].CustomTitle[0].EncodeBlend=true",
             "VideoWidget[0].CustomTitle[0].PreviewBlend=true",
@@ -85,10 +86,10 @@ class ConfigManager:
     # ========== 加载 ==========
 
     @staticmethod
-    def load_config():
+    def load_config() -> Dict[str, Any]:
         """加载配置：YAML 优先，环境变量覆盖，兼容旧 JSON"""
         defaults = ConfigManager.get_default_config()
-        config = dict(defaults)  # 浅拷贝
+        config: Dict[str, Any] = dict(defaults)  # 浅拷贝
 
         # 1) 尝试加载 YAML
         yaml_path = ConfigManager.get_config_yaml_path()
@@ -122,9 +123,9 @@ class ConfigManager:
         return config
 
     @staticmethod
-    def _apply_env_overrides(config):
+    def _apply_env_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
         """环境变量覆盖：{timeout → TIMEOUT}"""
-        env_map = {
+        env_map: Dict[str, str] = {
             "timeout": "TIMEOUT",
             "ping_timeout": "PING_TIMEOUT",
             "ping_count": "PING_COUNT",
@@ -137,7 +138,7 @@ class ConfigManager:
             "verify_ssl": "VERIFY_SSL",
         }
         for key, env_key in env_map.items():
-            val = os.environ.get(env_key)
+            val: Optional[str] = os.environ.get(env_key)
             if val is not None:
                 # 布尔/数字转换
                 if val.lower() in ("true", "1", "yes"):
@@ -155,7 +156,9 @@ class ConfigManager:
         return config
 
     @staticmethod
-    def _validate_and_fix_config(config, default_config):
+    def _validate_and_fix_config(
+        config: Dict[str, Any], default_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         for key, value in default_config.items():
             if key not in config:
                 config[key] = value
@@ -168,7 +171,7 @@ class ConfigManager:
     # ========== 保存（写入 JSON 以保证向下兼容） ==========
 
     @staticmethod
-    def save_config(config):
+    def save_config(config: Dict[str, Any]) -> bool:
         try:
             config_file = ConfigManager.get_config_json_path()
             config_dir = os.path.dirname(config_file)

@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 from openpyxl import Workbook
@@ -18,19 +19,20 @@ import subprocess
 class LogManager:
     """日志管理器 — 支持级别控制、文件轮转、响应截断"""
 
-    MAX_RESPONSE_BYTES = 1024  # log_raw_response 截断阈值
+    MAX_RESPONSE_BYTES: int = 1024  # log_raw_response 截断阈值
 
-    def __init__(self, log_level="INFO"):
-        self.app_dir = self.get_app_directory()
-        self.log_dir = os.path.join(self.app_dir, "logs")
+    def __init__(self, log_level: str = "INFO"):
+        self.app_dir: str = self.get_app_directory()
+        self.log_dir: str = os.path.join(self.app_dir, "logs")
+        self._logger: Optional[logging.Logger] = None
         self._setup_logging(log_level)
 
-        self.detailed_log_file = None
-        self.failure_log_file = None
-        self.excel_result_file = None
+        self.detailed_log_file: Optional[str] = None
+        self.failure_log_file: Optional[str] = None
+        self.excel_result_file: Optional[str] = None
         self.setup_logs()
 
-    def _setup_logging(self, log_level):
+    def _setup_logging(self, log_level: str) -> None:
         """初始化 Python logging 系统（日志级别 + 轮转）"""
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir, exist_ok=True)
@@ -60,13 +62,13 @@ class LogManager:
         root.setLevel(level)
         self._logger = root
 
-    def get_app_directory(self):
+    def get_app_directory(self) -> str:
         if getattr(sys, "frozen", False):
             return os.path.dirname(sys.executable)
         else:
             return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    def setup_logs(self):
+    def setup_logs(self) -> None:
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -80,7 +82,7 @@ class LogManager:
 
     # ---------- 统一日志记录 ----------
 
-    def log_detailed(self, message, level="INFO"):
+    def log_detailed(self, message: str, level: str = "INFO") -> None:
         """写入详细日志文件 + Python logging"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -93,7 +95,12 @@ class LogManager:
         except Exception as e:
             self._logger.error(f"log_detailed 写入失败: {e}")
 
-    def log_failure(self, device_info, error_message, command=""):
+    def log_failure(
+        self,
+        device_info: Union[object, str],
+        error_message: str,
+        command: str = "",
+    ) -> None:
         """记录失败到失败日志"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -107,8 +114,17 @@ class LogManager:
 
     # ---------- CGI 元数据日志 ----------
 
-    def log_cgi_request(self, device_ip, command_index, total_commands,
-                        full_url, auth_type, headers, method="GET", raw_command=""):
+    def log_cgi_request(
+        self,
+        device_ip: str,
+        command_index: int,
+        total_commands: int,
+        full_url: str,
+        auth_type: str,
+        headers: Dict[str, str],
+        method: str = "GET",
+        raw_command: str = "",
+    ) -> None:
         """记录详细的 CGI 请求元数据"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -129,8 +145,16 @@ class LogManager:
         except Exception as e:
             self._logger.error(f"log_cgi_request 写入失败: {e}")
 
-    def log_cgi_response(self, device_ip, status_code, response_time,
-                         response_headers, response_body, success=True, raw_command=""):
+    def log_cgi_response(
+        self,
+        device_ip: str,
+        status_code: Union[int, str],
+        response_time: float,
+        response_headers: Dict[str, str],
+        response_body: str,
+        success: bool = True,
+        raw_command: str = "",
+    ) -> None:
         """记录详细的 CGI 响应元数据"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -153,8 +177,17 @@ class LogManager:
         except Exception as e:
             self._logger.error(f"log_cgi_response 写入失败: {e}")
 
-    def log_raw_request(self, device_ip, command_index, total_commands,
-                        full_url, raw_command, auth_type, headers, method="GET"):
+    def log_raw_request(
+        self,
+        device_ip: str,
+        command_index: int,
+        total_commands: int,
+        full_url: str,
+        raw_command: str,
+        auth_type: str,
+        headers: Dict[str, str],
+        method: str = "GET",
+    ) -> None:
         """记录原始请求数据"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -172,8 +205,15 @@ class LogManager:
         except Exception as e:
             self._logger.error(f"log_raw_request 写入失败: {e}")
 
-    def log_raw_response(self, device_ip, status_code, response_time,
-                         response_headers, response_body, raw_command=""):
+    def log_raw_response(
+        self,
+        device_ip: str,
+        status_code: Union[int, str],
+        response_time: float,
+        response_headers: Dict[str, str],
+        response_body: str,
+        raw_command: str = "",
+    ) -> None:
         """记录原始响应数据 — 超过 1KB 自动截断"""
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -202,7 +242,9 @@ class LogManager:
 
     # ---------- Excel 导出 ----------
 
-    def export_excel_results(self, devices, excel_source_file):
+    def export_excel_results(
+        self, devices: List[Any], excel_source_file: str
+    ) -> Optional[str]:
         try:
             wb = Workbook()
             ws = wb.active
@@ -221,7 +263,7 @@ class LogManager:
 
     # ---------- 日志文件快捷操作 ----------
 
-    def open_failure_logs(self):
+    def open_failure_logs(self) -> bool:
         try:
             if os.path.exists(self.failure_log_file):
                 self._open_file(self.failure_log_file)
@@ -230,7 +272,7 @@ class LogManager:
         except Exception:
             return False
 
-    def open_log_directory(self):
+    def open_log_directory(self) -> bool:
         try:
             if os.path.exists(self.log_dir):
                 self._open_file(self.log_dir)
@@ -240,7 +282,7 @@ class LogManager:
             return False
 
     @staticmethod
-    def _open_file(path):
+    def _open_file(path: str) -> None:
         """平台无关的文件/目录打开"""
         if platform.system() == "Windows":
             os.startfile(path)
