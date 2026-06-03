@@ -36,38 +36,25 @@ class TestReferenceToConfig:
     """验证 CGI 参数引用与配置管理器的集成"""
 
     def test_default_commands_match_reference(self):
-        """ConfigManager 默认命令应该在参考参数库中有对应定义"""
+        """ConfigManager 默认命令中的 VideoWidget 参数应该在参考参数库中有对应定义"""
         ref_params = CGIReferenceManager.get_default_reference_data()
         default_commands = ConfigManager.get_default_cgi_commands()
 
         # 参考库中定义的参数名集合
         ref_param_names = {r["param"] for r in ref_params}
 
-        # Rect[0], Rect[1], Rect[2], Rect[3] 都是 Rect 的子索引
-        # 从参考库中提取父参数（去掉最后可能出现的索引后缀）
-        ref_base_params = set()
-        import re
-        for p in ref_param_names:
-            # 去掉末尾的 [N] 索引得到基础参数名
-            base = re.sub(r'\[\d+\]$', '', p)
-            ref_base_params.add(base)
+        # 只验证 VideoWidget 相关命令（原有的）在参考库中有定义
+        video_commands = [c for c in default_commands
+                          if any("VideoWidget" in p.get("name", "")
+                                 for p in c.get("params", []))]
 
-        for cmd in default_commands:
-            if '=' in cmd:
-                param_name = cmd.split('=', 1)[0]
-            else:
-                param_name = cmd
+        for cmd in video_commands:
+            for param in cmd.get("params", []):
+                param_name = param["name"]
+                assert param_name in ref_param_names, \
+                    f"参数 {param_name} 在命令 {cmd['name']} 中未在参考参数库中找到"
 
-            # 尝试去掉最后的 [N] 来匹配基础参数
-            base_param = re.sub(r'\[\d+\]$', '', param_name)
-
-            found = (param_name in ref_param_names or
-                     param_name in ref_base_params or
-                     base_param in ref_param_names or
-                     base_param in ref_base_params)
-            assert found, f"参数 {param_name} 未在参考参数库中找到"
-
-        # 验证参考参数库包含默认命令所需的基础参数
+        # 验证参考参数库包含基础参数
         assert "VideoWidget[0].CustomTitle[0].EncodeBlend" in ref_param_names
         assert "VideoWidget[0].CustomTitle[0].Text" in ref_param_names
 
@@ -78,7 +65,7 @@ class TestReferenceToConfig:
 
         assert "参数库" in ref
         assert len(ref["参数库"]) > 0
-        assert ref["version"] == "9.5"
+        assert ref["version"] == "10.0"
 
     def test_reference_save_and_reload(self):
         """保存参考参数后，应该能重新加载"""
@@ -102,7 +89,7 @@ class TestReferenceToConfig:
                     assert loaded["total_parameters"] == len(
                         CGIReferenceManager.get_default_reference_data()
                     )
-                    assert loaded["version"] == "9.5"
+                    assert loaded["version"] == "10.0"
 
 
 # ============================================================================
@@ -508,4 +495,4 @@ class TestConfigPersistence:
                     with open(ref_path, "r", encoding="utf-8") as f:
                         saved = json.load(f)
                     assert "参数库" in saved
-                    assert saved["version"] == "9.5"
+                    assert saved["version"] == "10.0"

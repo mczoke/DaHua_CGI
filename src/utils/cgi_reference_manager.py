@@ -29,255 +29,46 @@ class CGIReferenceManager:
         "DeviceConfig":     "设备配置管理",
     }
 
-    # ========== CGI 命令参考 ==========
+    # ========== CGI 命令参考（从 ConfigManager 加载） ==========
 
-    CGI_COMMANDS = [
-        # ---- 告警相关 (Alarm) ----
-        {
-            "command": "GetAlarmRecord",
-            "module": "Alarm",
-            "action": "getAlarmRecord",
-            "method": "GET",
-            "description": "获取告警记录",
-            "url_example": "/cgi-bin/eventManager.cgi?action=getAlarmRecord&pageNo=1&pageSize=10",
-            "params": [
-                {"name": "pageNo",      "type": "int",    "required": True,  "default": "1",   "desc": "页码"},
-                {"name": "pageSize",    "type": "int",    "required": True,  "default": "20",  "desc": "每页条数"},
-                {"name": "startTime",   "type": "string", "required": False, "default": "",    "desc": "开始时间 (yyyy-MM-dd HH:mm:ss)"},
-                {"name": "endTime",     "type": "string", "required": False, "default": "",    "desc": "结束时间 (yyyy-MM-dd HH:mm:ss)"},
-                {"name": "eventType",   "type": "string", "required": False, "default": "",    "desc": "事件类型过滤"},
-                {"name": "channel",     "type": "int",    "required": False, "default": "0",   "desc": "通道号"},
-            ],
-            "returns": {
-                "format": "XML",
-                "fields": [
-                    {"name": "alarmRecord",       "desc": "告警记录列表"},
-                    {"name": "alarmRecord.ID",    "desc": "记录ID"},
-                    {"name": "alarmRecord.Time",  "desc": "告警时间"},
-                    {"name": "alarmRecord.Type",  "desc": "告警类型（如 MotionDetection, VideoLoss）"},
-                    {"name": "alarmRecord.Channel","desc": "告警通道"},
-                    {"name": "alarmRecord.Status","desc": "告警状态（Start/Stop）"},
-                    {"name": "found",             "desc": "匹配记录总数"},
-                ],
-            },
-        },
-        {
-            "command": "GetAlarmConfig",
-            "module": "Alarm",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取告警配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=AlarmOut",
-            "params": [
-                {"name": "name",  "type": "string", "required": True,  "default": "AlarmOut",     "desc": "配置名称（如 AlarmOut, MotionDetect, VideoLoss, VideoBlind）"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.AlarmOut",        "desc": "告警输出配置表"},
-                    {"name": "table.AlarmOut.Channel","desc": "告警输出通道"},
-                    {"name": "table.AlarmOut.Mode",   "desc": "告警输出模式（0=关闭, 1=常开, 2=脉冲）"},
-                ],
-            },
-        },
-        {
-            "command": "SetAlarmConfig",
-            "module": "Alarm",
-            "action": "setConfig",
-            "method": "GET",
-            "description": "设置告警配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=setConfig&AlarmOut[0].Mode=1",
-            "params": [
-                {"name": "AlarmOut[0].Mode",           "type": "int",    "required": False, "default": "", "desc": "告警输出模式: 0=关闭, 1=常开, 2=脉冲"},
-                {"name": "AlarmOut[0].Channel",         "type": "int",    "required": False, "default": "", "desc": "告警输出通道"},
-                {"name": "AlarmOut[0].State",           "type": "string", "required": False, "default": "", "desc": "告警输出状态"},
-                {"name": "VideoBlind[0].Enable",        "type": "bool",   "required": False, "default": "", "desc": "视频遮挡检测启用"},
-                {"name": "VideoLoss[0].Enable",         "type": "bool",   "required": False, "default": "", "desc": "视频丢失检测启用"},
-                {"name": "MotionDetect[0].Enable",      "type": "bool",   "required": False, "default": "", "desc": "移动侦测启用"},
-            ],
-            "returns": {
-                "format": "text",
-                "fields": [
-                    {"name": "OK", "desc": "设置成功"},
-                    {"name": "Error", "desc": "设置失败及错误信息"},
-                ],
-            },
-        },
-        {
-            "command": "GetEventType",
-            "module": "Alarm",
-            "action": "getEventType",
-            "method": "GET",
-            "description": "获取设备支持的事件类型列表",
-            "url_example": "/cgi-bin/eventManager.cgi?action=getEventType",
-            "params": [],
-            "returns": {
-                "format": "XML",
-                "fields": [
-                    {"name": "eventType",            "desc": "事件类型"},
-                    {"name": "eventType.ID",         "desc": "事件类型ID"},
-                    {"name": "eventType.Name",       "desc": "事件类型名称"},
-                    {"name": "eventType.Description","desc": "事件描述"},
-                ],
-            },
-        },
-        # ---- 智能分析 (SmartAnalysis) ----
-        {
-            "command": "GetSmartAnalysis",
-            "module": "SmartAnalysis",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取智能分析配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=SmartAnalysis",
-            "params": [
-                {"name": "name", "type": "string", "required": True, "default": "SmartAnalysis", "desc": "配置名称（如 SmartAnalysis, IntelligentBusiness）"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.SmartAnalysis",          "desc": "智能分析配置表"},
-                    {"name": "table.SmartAnalysis.Enable",   "desc": "智能分析启用/关闭"},
-                    {"name": "table.SmartAnalysis.Support",  "desc": "支持的智能分析类型"},
-                ],
-            },
-        },
-        {
-            "command": "GetFaceInfo",
-            "module": "SmartAnalysis",
-            "action": "getFaceInfo",
-            "method": "GET",
-            "description": "获取人脸检测信息",
-            "url_example": "/cgi-bin/faceManager.cgi?action=getFaceInfo",
-            "params": [
-                {"name": "channel",   "type": "int",    "required": False, "default": "0",   "desc": "通道号"},
-                {"name": "pageNo",    "type": "int",    "required": False, "default": "1",   "desc": "页码"},
-                {"name": "pageSize",  "type": "int",    "required": False, "default": "20",  "desc": "每页条数"},
-            ],
-            "returns": {
-                "format": "XML",
-                "fields": [
-                    {"name": "faceInfo",              "desc": "人脸信息列表"},
-                    {"name": "faceInfo.Gender",       "desc": "性别"},
-                    {"name": "faceInfo.Age",          "desc": "年龄"},
-                    {"name": "faceInfo.FaceRect",     "desc": "人脸矩形区域"},
-                    {"name": "faceInfo.SnapImage",    "desc": "抓拍图片"},
-                    {"name": "faceInfo.HaveMask",     "desc": "是否戴口罩"},
-                ],
-            },
-        },
-        {
-            "command": "GetVideoAnalyze",
-            "module": "SmartAnalysis",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取视频分析配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyze",
-            "params": [
-                {"name": "name", "type": "string", "required": True, "default": "VideoAnalyze", "desc": "配置名称"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.VideoAnalyze",              "desc": "视频分析配置"},
-                    {"name": "table.VideoAnalyze.DetectType",   "desc": "检测类型（如 Intrusion, Loitering, Park 等）"},
-                    {"name": "table.VideoAnalyze.Rule",         "desc": "规则配置"},
-                    {"name": "table.VideoAnalyze.Enable",       "desc": "是否启用"},
-                ],
-            },
-        },
-        # ---- 设备管理 (DeviceConfig) ----
-        {
-            "command": "GetDeviceConfig",
-            "module": "DeviceConfig",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取设备通用配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=General",
-            "params": [
-                {"name": "name", "type": "string", "required": True, "default": "General", "desc": "配置名称（如 General, Serial, USB, PTZ）"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.General",              "desc": "通用配置表"},
-                    {"name": "table.General.SerialNo",     "desc": "设备序列号"},
-                    {"name": "table.General.MachineName",  "desc": "设备名称"},
-                    {"name": "table.General.Language",     "desc": "系统语言"},
-                    {"name": "table.General.VideoFormat",  "desc": "视频制式"},
-                ],
-            },
-        },
-        {
-            "command": "SetDeviceConfig",
-            "module": "DeviceConfig",
-            "action": "setConfig",
-            "method": "GET",
-            "description": "设置设备通用配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=setConfig&General.MachineName=MyCamera",
-            "params": [
-                {"name": "General.MachineName",    "type": "string", "required": False, "default": "", "desc": "设备名称"},
-                {"name": "General.Language",       "type": "string", "required": False, "default": "", "desc": "系统语言（如 zh, en）"},
-                {"name": "General.VideoFormat",    "type": "string", "required": False, "default": "", "desc": "视频制式（NTSC/PAL）"},
-                {"name": "General.AutoMaintain",   "type": "string", "required": False, "default": "", "desc": "自动维护时间"},
-            ],
-            "returns": {
-                "format": "text",
-                "fields": [
-                    {"name": "OK",    "desc": "设置成功"},
-                    {"name": "Error", "desc": "设置失败及原因"},
-                ],
-            },
-        },
-        {
-            "command": "GetNetworkConfig",
-            "module": "Network",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取网络配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=Network",
-            "params": [
-                {"name": "name", "type": "string", "required": True, "default": "Network", "desc": "配置名称（如 Network, PPPoE, DDNS, SMTP, FTP, NTP）"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.Network",          "desc": "网络配置表"},
-                    {"name": "table.Network.IPAddress","desc": "IP地址"},
-                    {"name": "table.Network.SubnetMask","desc": "子网掩码"},
-                    {"name": "table.Network.Gateway",  "desc": "默认网关"},
-                    {"name": "table.Network.DNS",      "desc": "DNS服务器"},
-                    {"name": "table.Network.MacAddress","desc": "MAC地址"},
-                    {"name": "table.Network.DHCP",     "desc": "DHCP启用"},
-                ],
-            },
-        },
-        {
-            "command": "GetTimeConfig",
-            "module": "System",
-            "action": "getConfig",
-            "method": "GET",
-            "description": "获取时间配置",
-            "url_example": "/cgi-bin/configManager.cgi?action=getConfig&name=General.Time",
-            "params": [
-                {"name": "name", "type": "string", "required": True, "default": "General.Time", "desc": "配置名称"},
-            ],
-            "returns": {
-                "format": "table",
-                "fields": [
-                    {"name": "table.General.Time",              "desc": "时间配置"},
-                    {"name": "table.General.Time.TimeZone",     "desc": "时区"},
-                    {"name": "table.General.Time.SyncType",     "desc": "同步类型（Manual/NTP）"},
-                    {"name": "table.General.Time.NTPServer",    "desc": "NTP服务器地址"},
-                ],
-            },
-        },
-    ]
+    _CGI_COMMANDS_LOADED = False
+    CGI_COMMANDS: List[Dict] = []
 
-    # ========== 参数库扩展（新增告警/智能分析/设备管理参数） ==========
+    @classmethod
+    def _ensure_commands_loaded(cls) -> None:
+        """确保 CGI 命令从配置加载（延迟加载，避免循环导入）"""
+        if cls._CGI_COMMANDS_LOADED:
+            return
+        cls._CGI_COMMANDS_LOADED = True
+        try:
+            # 延迟导入避免循环依赖
+            from utils.config_manager import ConfigManager
+            config = ConfigManager.load_config()
+            raw_commands = config.get("cgi_commands", [])
+            cls.CGI_COMMANDS = cls._normalize_commands(raw_commands)
+        except Exception as e:
+            logging.warning(f"从 ConfigManager 加载 CGI 命令失败: {e}，使用空列表")
+            cls.CGI_COMMANDS = []
+
+    @staticmethod
+    def _normalize_commands(raw_commands: List[Dict]) -> List[Dict]:
+        """将 config.yaml 格式的命令转换为标准格式（添加空返回值字段等）"""
+        result = []
+        for cmd in raw_commands:
+            normalized = dict(cmd)
+            # 确保所有字段存在
+            normalized.setdefault("method", "GET")
+            normalized.setdefault("auth", "digest")
+            normalized.setdefault("timeout", 30)
+            normalized.setdefault("description", "")
+            normalized.setdefault("params", [])
+            result.append(normalized)
+        return result
 
     @staticmethod
     def get_command_list():
         """返回 CGI 命令参考列表"""
+        CGIReferenceManager._ensure_commands_loaded()
         return list(CGIReferenceManager.CGI_COMMANDS)
 
     @staticmethod
@@ -657,13 +448,15 @@ class CGIReferenceManager:
     @staticmethod
     def get_commands_by_module(module: str) -> List[Dict]:
         """查询指定模块的所有 CGI 命令"""
-        return [cmd for cmd in CGIReferenceManager.CGI_COMMANDS if cmd["module"] == module]
+        CGIReferenceManager._ensure_commands_loaded()
+        return [cmd for cmd in CGIReferenceManager.CGI_COMMANDS if cmd.get("module") == module]
 
     @staticmethod
     def get_command(command_name: str) -> Optional[Dict]:
         """按命令名查询单条 CGI 命令"""
+        CGIReferenceManager._ensure_commands_loaded()
         for cmd in CGIReferenceManager.CGI_COMMANDS:
-            if cmd["command"] == command_name:
+            if cmd.get("name") == command_name:
                 return cmd
         return None
 
@@ -675,10 +468,11 @@ class CGIReferenceManager:
     @staticmethod
     def search_commands(keyword: str) -> List[Dict]:
         """搜索命令（按命令名或描述模糊匹配）"""
+        CGIReferenceManager._ensure_commands_loaded()
         kw = keyword.lower()
         return [
             cmd for cmd in CGIReferenceManager.CGI_COMMANDS
-            if kw in cmd["command"].lower() or kw in cmd["description"].lower()
+            if kw in cmd.get("name", "").lower() or kw in cmd.get("description", "").lower()
         ]
 
     @staticmethod
@@ -694,6 +488,7 @@ class CGIReferenceManager:
 
     @staticmethod
     def load_reference():
+        CGIReferenceManager._ensure_commands_loaded()
         reference_file = CGIReferenceManager.get_reference_path()
         default_reference_data = CGIReferenceManager.get_default_reference_data()
         default_reference = {
@@ -739,6 +534,7 @@ class CGIReferenceManager:
 
     @staticmethod
     def save_reference(reference):
+        CGIReferenceManager._ensure_commands_loaded()
         try:
             reference_file = CGIReferenceManager.get_reference_path()
             if "参数库" not in reference or not reference["参数库"]:

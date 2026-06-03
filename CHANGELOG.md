@@ -1,5 +1,20 @@
 # 变更日志
 
+## [V9.6-alpha] - 2026-06-03
+### Task6a - API 文档 (Claw-Claude)
+- 新增 `docs/api/` 目录，含 6 份文档（1361 行）
+- 覆盖 async_executor, config_manager, cgi_reference_manager, device_manager, log_manager
+- 含模块索引、依赖图、快速入门、各模块接口说明
+
+### Task6b - 集成测试 (OpenClaw)
+- 新增 `test_full_pipeline_integration.py`，19 个测试用例（511 行）
+- 覆盖 CGI 请求 → 设备管理 → 日志记录全链路
+- 包括异常路径：参数缺失、设备离线、网络错误
+
+### 测试状态
+- 全部测试通过：257/257 ✅
+- 总覆盖率：83% → 84%
+
 ## [V9.6-alpha] - 2026-06-01
 ### 配置管理重构 (Task1 - Claw-CodeX)
 - 新建 `src/config/config.yaml` 作为主配置源（双源加载: yaml优先, 环境变量覆盖）

@@ -71,16 +71,158 @@ class ConfigManager:
         }
 
     @staticmethod
-    def get_default_cgi_commands() -> List[str]:
+    def get_default_cgi_commands() -> List[Dict[str, Any]]:
+        """返回默认 CGI 命令定义列表（结构化格式）"""
         return [
-            "VideoWidget[0].CustomTitle[0].EncodeBlend=true",
-            "VideoWidget[0].CustomTitle[0].PreviewBlend=true",
-            "VideoWidget[0].CustomTitle[0].Rect[0]=5207",
-            "VideoWidget[0].CustomTitle[0].Rect[1]=6631",
-            "VideoWidget[0].CustomTitle[0].Rect[2]=7828",
-            "VideoWidget[0].CustomTitle[0].Rect[3]=7069",
-            "VideoWidget[0].CustomTitle[0].Text=日照职业技术学院天台山校区",
-            "VideoWidget[0].CustomTitle[0].TextAlign=2",
+            # ---- 告警相关 ----
+            {
+                "name": "GetAlarmRecord",
+                "path": "/cgi-bin/eventManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取告警记录",
+                "params": [
+                    {"name": "action",    "type": "string", "required": True,  "default": "getAlarmRecord"},
+                    {"name": "pageNo",    "type": "int",    "required": True,  "default": "1"},
+                    {"name": "pageSize",  "type": "int",    "required": True,  "default": "20"},
+                    {"name": "startTime", "type": "string", "required": False, "default": ""},
+                    {"name": "endTime",   "type": "string", "required": False, "default": ""},
+                    {"name": "eventType", "type": "string", "required": False, "default": ""},
+                    {"name": "channel",   "type": "int",    "required": False, "default": "0"},
+                ],
+            },
+            {
+                "name": "GetAlarmConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取告警配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "AlarmOut"},
+                ],
+            },
+            {
+                "name": "SetAlarmConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "设置告警配置",
+                "params": [
+                    {"name": "action",                "type": "string", "required": True,  "default": "setConfig"},
+                    {"name": "AlarmOut[0].Mode",       "type": "int",    "required": False, "default": ""},
+                    {"name": "AlarmOut[0].Channel",    "type": "int",    "required": False, "default": ""},
+                    {"name": "AlarmOut[0].State",      "type": "string", "required": False, "default": ""},
+                    {"name": "VideoBlind[0].Enable",   "type": "bool",   "required": False, "default": ""},
+                    {"name": "VideoLoss[0].Enable",    "type": "bool",   "required": False, "default": ""},
+                    {"name": "MotionDetect[0].Enable", "type": "bool",   "required": False, "default": ""},
+                ],
+            },
+            {
+                "name": "GetEventType",
+                "path": "/cgi-bin/eventManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取设备支持的事件类型列表",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getEventType"},
+                ],
+            },
+            # ---- 智能分析 ----
+            {
+                "name": "GetSmartAnalysis",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取智能分析配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "SmartAnalysis"},
+                ],
+            },
+            {
+                "name": "GetFaceInfo",
+                "path": "/cgi-bin/faceManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取人脸检测信息",
+                "params": [
+                    {"name": "action",   "type": "string", "required": True,  "default": "getFaceInfo"},
+                    {"name": "channel",  "type": "int",    "required": False, "default": "0"},
+                    {"name": "pageNo",   "type": "int",    "required": False, "default": "1"},
+                    {"name": "pageSize", "type": "int",    "required": False, "default": "20"},
+                ],
+            },
+            {
+                "name": "GetVideoAnalyze",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取视频分析配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "VideoAnalyze"},
+                ],
+            },
+            # ---- 设备管理 ----
+            {
+                "name": "GetDeviceConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取设备通用配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "General"},
+                ],
+            },
+            {
+                "name": "SetDeviceConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "设置设备通用配置",
+                "params": [
+                    {"name": "action",              "type": "string", "required": True,  "default": "setConfig"},
+                    {"name": "General.MachineName",  "type": "string", "required": False, "default": ""},
+                    {"name": "General.Language",     "type": "string", "required": False, "default": ""},
+                    {"name": "General.VideoFormat",  "type": "string", "required": False, "default": ""},
+                    {"name": "General.AutoMaintain", "type": "string", "required": False, "default": ""},
+                ],
+            },
+            {
+                "name": "GetNetworkConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取网络配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "Network"},
+                ],
+            },
+            {
+                "name": "GetTimeConfig",
+                "path": "/cgi-bin/configManager.cgi",
+                "method": "GET",
+                "auth": "digest",
+                "timeout": 30,
+                "description": "获取时间配置",
+                "params": [
+                    {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                    {"name": "name",   "type": "string", "required": True, "default": "General.Time"},
+                ],
+            },
         ]
 
     # ========== 加载 ==========

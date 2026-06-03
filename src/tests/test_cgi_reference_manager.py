@@ -15,14 +15,14 @@ import os
 import json
 import tempfile
 import logging
-from unittest.mock import MagicMock, patch, PropertyMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
-from utils.cgi_reference_manager import CGIReferenceManager
+from unittest.mock import patch, MagicMock
 
+from utils.cgi_reference_manager import CGIReferenceManager
 
 # ============================================================================
 # get_app_directory
@@ -304,60 +304,97 @@ class TestSaveReference:
 class TestCGICommands:
     """Tests for CGI command reference."""
 
-    def test_get_command_list_nonempty(self):
+    _MOCK_COMMANDS = [
+        {"name": "GetAlarmRecord", "module": "Alarm",
+         "path": "/cgi-bin/eventManager.cgi", "method": "GET",
+         "auth": "digest", "timeout": 30, "description": "获取告警记录",
+         "params": [{"name": "action", "type": "string",
+                      "required": True, "default": "getAlarmRecord"}]},
+        {"name": "GetAlarmConfig", "module": "Alarm",
+         "path": "/cgi-bin/configManager.cgi", "method": "GET",
+         "auth": "digest", "timeout": 30, "description": "获取告警配置",
+         "params": [{"name": "action", "type": "string",
+                      "required": True, "default": "getConfig"}]},
+        {"name": "SetAlarmConfig", "module": "Alarm",
+         "path": "/cgi-bin/configManager.cgi", "method": "GET",
+         "auth": "digest", "timeout": 30, "description": "设置告警配置",
+         "params": [{"name": "action", "type": "string",
+                      "required": True, "default": "setConfig"}]},
+        {"name": "GetEventType", "module": "Alarm",
+         "path": "/cgi-bin/eventManager.cgi", "method": "GET",
+         "auth": "digest", "timeout": 30, "description": "获取事件类型",
+         "params": [{"name": "action", "type": "string",
+                      "required": True, "default": "getEventType"}]},
+    ]
+
+    @staticmethod
+    def _mock_config():
+        """模拟 ConfigManager.load_config() 返回含 cgi_commands 的配置."""
+        return {"cgi_commands": TestCGICommands._MOCK_COMMANDS}
+
+    # ---- 依赖配置加载的命令测试 ----
+
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_get_command_list_nonempty(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         commands = CGIReferenceManager.get_command_list()
-        assert len(commands) > 0
+        assert len(commands) == 4
         for cmd in commands:
-            assert 'command' in cmd
+            assert 'name' in cmd
             assert 'module' in cmd
-            assert 'action' in cmd
             assert 'method' in cmd
+            assert 'path' in cmd
             assert 'description' in cmd
             assert 'params' in cmd
-            assert 'returns' in cmd
 
-    def test_get_command_list_contains_new_commands(self):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_get_command_list_contains_new_commands(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         commands = CGIReferenceManager.get_command_list()
-        cmd_names = {c['command'] for c in commands}
+        cmd_names = {c['name'] for c in commands}
         assert 'GetAlarmRecord' in cmd_names
         assert 'GetAlarmConfig' in cmd_names
         assert 'SetAlarmConfig' in cmd_names
         assert 'GetEventType' in cmd_names
-        assert 'GetSmartAnalysis' in cmd_names
-        assert 'GetFaceInfo' in cmd_names
-        assert 'GetVideoAnalyze' in cmd_names
-        assert 'GetDeviceConfig' in cmd_names
-        assert 'SetDeviceConfig' in cmd_names
-        assert 'GetNetworkConfig' in cmd_names
-        assert 'GetTimeConfig' in cmd_names
 
-    def test_get_command_found(self):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_get_command_found(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         cmd = CGIReferenceManager.get_command('GetAlarmRecord')
         assert cmd is not None
         assert cmd['module'] == 'Alarm'
-        assert cmd['action'] == 'getAlarmRecord'
 
     def test_get_command_not_found(self):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         cmd = CGIReferenceManager.get_command('NonExistentCommand')
         assert cmd is None
 
-    def test_get_commands_by_module(self):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_get_commands_by_module(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         alarm_cmds = CGIReferenceManager.get_commands_by_module('Alarm')
         assert len(alarm_cmds) == 4
-        names = {c['command'] for c in alarm_cmds}
+        names = {c['name'] for c in alarm_cmds}
         assert names == {'GetAlarmRecord', 'GetAlarmConfig', 'SetAlarmConfig', 'GetEventType'}
 
     def test_get_commands_by_module_empty(self):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         cmds = CGIReferenceManager.get_commands_by_module('NonExistent')
         assert cmds == []
 
-    def test_search_commands_by_name(self):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_search_commands_by_name(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         results = CGIReferenceManager.search_commands('Alarm')
         assert len(results) >= 3
 
-    def test_search_commands_by_desc(self):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_search_commands_by_desc(self, mock_cfg):
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         results = CGIReferenceManager.search_commands('告警')
         assert len(results) >= 3
+
+    # ---- 不依赖配置的命令测试 ----
 
     def test_search_params_by_name(self):
         results = CGIReferenceManager.search_params('MotionDetect')
@@ -380,7 +417,7 @@ class TestCGICommands:
 
     def test_total_params_increased(self):
         params = CGIReferenceManager.get_default_reference_data()
-        assert len(params) > 20  # was 15, now ~38
+        assert len(params) > 20
 
     def test_dahua_modules_extended(self):
         assert 'Alarm' in CGIReferenceManager.DAHUA_MODULES
@@ -388,31 +425,33 @@ class TestCGICommands:
         assert 'DeviceConfig' in CGIReferenceManager.DAHUA_MODULES
 
     def test_dahua_modules_total_count(self):
-        assert len(CGIReferenceManager.DAHUA_MODULES) == 11  # was 8
+        assert len(CGIReferenceManager.DAHUA_MODULES) == 11
 
     @patch.object(CGIReferenceManager, 'get_reference_path')
     @patch.object(CGIReferenceManager, 'get_config_directory')
-    def test_load_reference_includes_commands(self, mock_config, mock_path):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_load_reference_includes_commands(self, mock_cfg, mock_config, mock_path):
         """load_reference should include CGI命令参考."""
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         with tempfile.TemporaryDirectory() as tmp:
             ref_path = os.path.join(tmp, 'cgi_reference.json')
             mock_path.return_value = ref_path
             mock_config.return_value = tmp
-
             ref = CGIReferenceManager.load_reference()
             assert 'CGI命令参考' in ref
-            assert len(ref['CGI命令参考']) > 0
-            assert ref['total_commands'] == len(CGIReferenceManager.CGI_COMMANDS)
+            assert len(ref['CGI命令参考']) == 4
+            assert ref['total_commands'] == 4
 
     @patch.object(CGIReferenceManager, 'get_reference_path')
     @patch.object(CGIReferenceManager, 'get_config_directory')
-    def test_save_reference_includes_commands(self, mock_config, mock_path):
+    @patch('utils.config_manager.ConfigManager.load_config', side_effect=_mock_config)
+    def test_save_reference_includes_commands(self, mock_cfg, mock_config, mock_path):
         """save_reference should populate CGI命令参考."""
+        CGIReferenceManager._CGI_COMMANDS_LOADED = False
         with tempfile.TemporaryDirectory() as tmp:
             ref_path = os.path.join(tmp, 'cgi_reference.json')
             mock_path.return_value = ref_path
             mock_config.return_value = tmp
-
             rv = CGIReferenceManager.save_reference({
                 '参数库': [{'param': 't', 'module': 'S'}],
                 '模块分类': ['System'],
