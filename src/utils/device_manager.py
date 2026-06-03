@@ -369,11 +369,17 @@ class ConfigExecutor:
         self._async_command_semaphore = None  # 命令级别的信号量
         if self.use_async:
             try:
-                # AsyncIOManager 会在后台线程启动事件循环并创建 aiohttp session
-                self.async_manager = AsyncIOManager(timeout=self.timeout, verify_ssl=self.config.get('verify_ssl', True), max_connections=300, auth_method=self.auth_method)  # 进一步提高连接池到300
+                # AsyncIOManager — 使用自适应线程池
+                max_conns = config.get("max_connections", 100)
+                self.async_manager = AsyncIOManager(
+                    timeout=self.timeout,
+                    verify_ssl=self.config.get('verify_ssl', True),
+                    max_connections=max_conns,
+                    auth_method=self.auth_method,
+                )
                 self._async_semaphore = asyncio.Semaphore(self.config_concurrent)  # 设备级别的共享信号量
                 self._async_command_semaphore = asyncio.Semaphore(self.config_concurrent * 2)  # 命令级别的信号量，允许更多并发
-                self._log(f"AsyncIOManager 已初始化，设备并发数: {self.config_concurrent}，命令并发数: {self.config_concurrent * 2}", "DEBUG")
+                self._log(f"AsyncIOManager 已初始化（自适应线程池，max_connections={max_conns}），设备并发数: {self.config_concurrent}，命令并发数: {self.config_concurrent * 2}", "DEBUG")
             except Exception:
                 self._log("初始化 AsyncIOManager 失败，回退到同步模式", "WARNING")
                 self.async_manager = None
@@ -1725,3 +1731,348 @@ class ConfigExecutor:
             )
             
             return False, f"请求异常: {str(e)[:100]}"
+
+
+# ============================================================================
+# 设备状态缓存 (TTL 过期 + 主动刷新)
+# ============================================================================
+
+class DeviceStatusCache:
+    """
+    设备状态缓存
+    - 缓存每个设备的最新状态（在线/离线），带 TTL 过期
+    - 支持主动刷新
+    - 线程安全
+    """
+    
+    def __init__(self, default_ttl: int = 60):
+        """
+        Args:
+            default_ttl: 默认缓存有效期（秒），默认 60 秒
+        """
+        self._default_ttl = default_ttl
+        self._cache: Dict[str, '_CacheEntry'] = {}
+        self._lock = threading.RLock()
+    
+    def get(self, device_ip: str) -> Optional[Dict]:
+        """获取缓存的设备状态，过期返回 None"""
+        with self._lock:
+            entry = self._cache.get(device_ip)
+            if entry is None:
+                return None
+            if entry.is_expired():
+                del self._cache[device_ip]
+                return None
+            return entry.data
+    
+    def set(self, device_ip: str, data: Dict, ttl: Optional[int] = None) -> None:
+        """设置设备状态缓存"""
+        with self._lock:
+            self._cache[device_ip] = _CacheEntry(
+                data=data,
+                ttl=ttl if ttl is not None else self._default_ttl,
+                timestamp=datetime.now()
+            )
+    
+    def invalidate(self, device_ip: str) -> None:
+        """主动失效某设备缓存"""
+        with self._lock:
+            self._cache.pop(device_ip, None)
+    
+    def invalidate_all(self) -> None:
+        """主动失效全部缓存"""
+        with self._lock:
+            self._cache.clear()
+    
+    def get_all(self) -> Dict[str, Dict]:
+        """获取所有有效（未过期）缓存"""
+        result = {}
+        with self._lock:
+            expired_keys = []
+            for ip, entry in self._cache.items():
+                if entry.is_expired():
+                    expired_keys.append(ip)
+                else:
+                    result[ip] = entry.data
+            for k in expired_keys:
+                del self._cache[k]
+        return result
+    
+    def get_cache_info(self) -> Dict:
+        """获取缓存统计信息"""
+        with self._lock:
+            now = datetime.now()
+            valid = 0
+            expired = 0
+            for entry in self._cache.values():
+                if entry.is_expired():
+                    expired += 1
+                else:
+                    valid += 1
+            return {
+                "total": len(self._cache),
+                "valid": valid,
+                "expired": expired,
+                "default_ttl": self._default_ttl,
+            }
+
+
+class _CacheEntry:
+    """缓存条目，记录数据和过期时间"""
+    __slots__ = ('data', 'ttl', 'timestamp')
+    
+    def __init__(self, data: Dict, ttl: int, timestamp: datetime):
+        self.data = data
+        self.ttl = ttl
+        self.timestamp = timestamp
+    
+    def is_expired(self) -> bool:
+        return (datetime.now() - self.timestamp).total_seconds() >= self.ttl
+
+
+# ============================================================================
+# 批量设备扫描器（并行 CGI 加速）
+# ============================================================================
+
+class DeviceScanner:
+    """
+    批量设备扫描器
+    - 使用 concurrent.futures 对多台设备并行发起 CGI 探测请求
+    - 集成 DeviceStatusCache 避免重复扫描
+    - 自动记录扫描速度指标日志
+    """
+    
+    def __init__(self, config: Dict, log_manager, log_callback=None):
+        self.config = config
+        self.log_manager = log_manager
+        self.log_callback = log_callback
+        self.max_workers = config.get("scan_concurrent", 50)
+        self.scan_timeout = config.get("scan_timeout", 3.0)  # 单台超时（秒）
+        self.auth_method = config.get("auth_method", "digest")
+        self.session = self._create_session()
+        self.cache = DeviceStatusCache(default_ttl=config.get("cache_ttl", 60))
+        self._stop_flag = threading.Event()
+    
+    def _log(self, message: str, level: str = "INFO") -> None:
+        """统一日志"""
+        if self.log_callback:
+            try:
+                self.log_callback(message, level)
+            except Exception:
+                pass
+        if self.log_manager:
+            self.log_manager.log_detailed(message, level)
+    
+    @staticmethod
+    def _create_session() -> requests.Session:
+        """创建高性能 HTTP 会话"""
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=200,
+            pool_maxsize=200,
+            max_retries=Retry(total=1, backoff_factor=0.3, status_forcelist=[502, 503, 504])
+        )
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
+    
+    def stop(self) -> None:
+        """停止扫描"""
+        self._stop_flag.set()
+        try:
+            self.session.close()
+        except Exception:
+            pass
+    
+    def _is_stopped(self) -> bool:
+        return self._stop_flag.is_set()
+    
+    def _probe_device_cgi(self, device: DeviceInfo) -> Dict:
+        """
+        单独探测一台设备的 CGI 可用性
+        发送简单的 status/global 请求检查设备响应
+        Returns:
+            dict: { "ip": ..., "online": bool, "status_code": ..., "response_time": ..., "error": str }
+        """
+        result = {
+            "ip": device.ip,
+            "online": False,
+            "status_code": None,
+            "response_time": 0.0,
+            "error": None,
+            "device": device,
+        }
+        
+        try:
+            # 优先使用 /cgi-bin/global.cgi?action=getCurrentTime 快速轻量探测
+            url = f"http://{device.ip}:{device.port}/cgi-bin/global.cgi?action=getCurrentTime"
+            
+            if self.auth_method == "digest":
+                auth = HTTPDigestAuth(device.username, device.password)
+            else:
+                auth = HTTPBasicAuth(device.username, device.password)
+            
+            start = datetime.now()
+            resp = self.session.get(url, auth=auth, timeout=self.scan_timeout, verify=False)
+            elapsed = (datetime.now() - start).total_seconds()
+            
+            result["response_time"] = round(elapsed, 3)
+            result["status_code"] = resp.status_code
+            
+            if resp.status_code == 200:
+                result["online"] = True
+                result["error"] = None
+            else:
+                result["error"] = f"HTTP {resp.status_code}"
+            
+        except requests.Timeout:
+            result["error"] = "timeout"
+        except requests.ConnectionError:
+            result["error"] = "connection_refused"
+        except Exception as e:
+            result["error"] = str(e)[:100]
+        
+        return result
+    
+    def scan_batch(self, devices: List[DeviceInfo], progress_callback=None) -> List[Dict]:
+        """
+        批量并行扫描设备
+        
+        - 优先使用缓存，过期或缺失的设备走实时探测
+        - 实时探测使用 ThreadPoolExecutor 并行
+        - 自动记录扫描指标
+        
+        Args:
+            devices: 设备列表
+            progress_callback: Optional[Callable[[int, int], None]] (completed, total)
+        
+        Returns:
+            List[Dict]: 每台设备扫描结果
+        """
+        self._stop_flag.clear()
+        scan_start = datetime.now()
+        
+        # 日志：扫描开始
+        self._log(f"[Scanner] 开始批量扫描 {len(devices)} 台设备 (扫描并发={self.max_workers}, 单台超时={self.scan_timeout}s)", "INFO")
+        self.log_manager.log_detailed(f"[Scanner] 批量扫描启动 | 设备数={len(devices)} | 并发={self.max_workers} | 超时={self.scan_timeout}s", "INFO")
+        
+        # 1. 从缓存获取有效状态
+        needs_probe = []
+        results = []
+        cache_hits = 0
+        
+        for device in devices:
+            cached = self.cache.get(device.ip)
+            if cached is not None:
+                # 缓存命中
+                results.append(cached)
+                cache_hits += 1
+                # 同时更新设备对象的在线状态
+                device.online = cached["online"]
+                device.status = "在线" if cached["online"] else "离线"
+            else:
+                needs_probe.append(device)
+        
+        self._log(f"[Scanner] 缓存命中 {cache_hits}/{len(devices)}，需实时探测 {len(needs_probe)} 台", "INFO")
+        
+        # 2. 并行实时探测
+        live_results = []
+        if needs_probe and not self._is_stopped():
+            live_results = self._probe_parallel(needs_probe, progress_callback)
+            
+            # 3. 更新缓存和设备状态
+            for scan_result in live_results:
+                ip = scan_result["ip"]
+                # 写入缓存
+                self.cache.set(ip, scan_result)
+                # 更新原生 DeviceInfo 对象
+                device = scan_result.get("device")
+                if device:
+                    device.online = scan_result["online"]
+                    if scan_result["online"]:
+                        device.status = "在线"
+                        device.last_message = f"CGI可达 (响应时间:{scan_result['response_time']}s)"
+                    else:
+                        device.status = "离线"
+                        device.last_message = f"CGI不可达: {scan_result['error']}"
+        
+        # 4. 合并结果
+        all_results = results + live_results
+        
+        # 5. 统计指标
+        scan_elapsed = (datetime.now() - scan_start).total_seconds()
+        online_count = sum(1 for r in all_results if r.get("online"))
+        failed_count = sum(1 for r in all_results if not r.get("online"))
+        
+        # 计算超时/错误分布
+        timeout_count = sum(1 for r in all_results if r.get("error") == "timeout")
+        refuse_count = sum(1 for r in all_results if r.get("error") == "connection_refused")
+        http_err_count = sum(1 for r in all_results if r.get("error") and r["error"].startswith("HTTP"))
+        other_err_count = sum(1 for r in all_results if r.get("error") and r["error"] not in ("timeout", "connection_refused") and not r["error"].startswith("HTTP"))
+        
+        # 日志：扫描完成
+        self._log(f"[Scanner] 扫描完成 | 总耗时={scan_elapsed:.2f}s | 在线={online_count} | 离线={failed_count} | "
+                  f"超时={timeout_count} | 连接拒绝={refuse_count} | HTTP错误={http_err_count} | 其他错误={other_err_count}", "INFO")
+        self.log_manager.log_detailed(
+            f"[Scanner] 批量扫描结果 | "
+            f"设备总数={len(all_results)} | 在线={online_count} | 离线={failed_count} | "
+            f"缓存命中={cache_hits} | 实时探测={len(live_results)} | "
+            f"总耗时={scan_elapsed:.2f}s | 平均每台={scan_elapsed/max(len(devices),1)*1000:.1f}ms | "
+            f"超时={timeout_count} | 连接拒绝={refuse_count} | HTTP错误={http_err_count} | 其他错误={other_err_count}",
+            "INFO"
+        )
+        
+        return all_results
+    
+    def _probe_parallel(self, devices: List[DeviceInfo], progress_callback=None) -> List[Dict]:
+        """使用 ThreadPoolExecutor 并行探测设备"""
+        total = len(devices)
+        completed = [0]  # mutable for closure
+        live_results = []
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_map = {executor.submit(self._probe_device_cgi, d): d for d in devices}
+            
+            for future in concurrent.futures.as_completed(future_map):
+                if self._is_stopped():
+                    break
+                completed[0] += 1
+                try:
+                    result = future.result(timeout=self.scan_timeout + 2)
+                    live_results.append(result)
+                except Exception as e:
+                    device = future_map[future]
+                    live_results.append({
+                        "ip": device.ip,
+                        "online": False,
+                        "status_code": None,
+                        "response_time": 0.0,
+                        "error": f"scan_exception: {e}",
+                        "device": device,
+                    })
+                if progress_callback:
+                    try:
+                        progress_callback(completed[0], total)
+                    except Exception:
+                        pass
+        
+        return live_results
+    
+    def refresh_one(self, device: DeviceInfo) -> Dict:
+        """主动刷新单台设备状态（跳过缓存）"""
+        self.cache.invalidate(device.ip)
+        return self._probe_device_cgi(device)
+    
+    def refresh_all(self, devices: List[DeviceInfo], progress_callback=None) -> List[Dict]:
+        """主动刷新全部设备状态（跳过缓存）"""
+        self.cache.invalidate_all()
+        self._log(f"[Scanner] 主动刷新全部 {len(devices)} 台设备状态", "INFO")
+        return self._probe_parallel(devices, progress_callback)
+    
+    def close(self) -> None:
+        """释放资源"""
+        try:
+            self.session.close()
+        except Exception:
+            pass
+        self.cache.invalidate_all()
