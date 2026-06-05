@@ -1,6 +1,23 @@
 # 变更日志
 
-## [V9.6-alpha] - 2026-06-05
+## [V9.6-alpha] - 2026-06-05 (更新)
+### Task9 - 多设备并发 + 聚合报表 (Claw-Claude ✅)
+#### 分项A：聚合结果管理器
+- 新增 `src/utils/aggregate_collector.py`（267 行）
+- `AggregateResultCollector`：跨设备结果合并、按命令/设备维度统计
+- 输出：`to_dict()`（JSON 序列化）+ `to_summary_text()`（日志摘要）
+- 数据结构：`AggregateReport` / `DeviceResultSummary` / `CommandSummary`
+
+#### 分项B：命令优先策略全并发加速
+- `_async_execute_by_command` 重构为 V2：所有设备×命令一次性 `asyncio.gather`
+- 通过 `asyncio.Semaphore(config_concurrent)` 控制总并发度
+- 保留 stop_callback / progress_callback / 变量过滤 / 设备资格检查
+
+#### 测试
+- 新增 `test_multi_device_async.py`：15 个测试用例（481 行）
+- 覆盖：聚合报表完整流程、并发限制、停止、变量过滤、空场景
+- 全量测试：322/322 ✅（+15）
+
 ### 修复：test_full_app.py 30个遗留失败 → 全部通过
 - `_RealishFrame` 增强：添加 `__getattr__` 自动 Mock 机制，支持 heading/column/title/geometry/cget 等
 - `messagebox`/`filedialog` 直接 Mock，使 assert_called 断言可用

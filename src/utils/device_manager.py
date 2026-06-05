@@ -597,8 +597,9 @@ class ConfigExecutor:
                     result = self.async_manager.run_coroutine(self._async_execute_by_device(target_devices, mode, progress_callback, stop_callback))
                     return result
                 else:
-                    # 暂时仍使用同步的命令优先实现以保持兼容
-                    return self._execute_by_command_strict(target_devices, mode, progress_callback, stop_callback)
+                    # 命令优先策略使用全并发异步版本
+                    result = self.async_manager.run_coroutine(self._async_execute_by_command(target_devices, mode, progress_callback, stop_callback))
+                    return result
             else:
                 if exec_strategy == "device_first":
                     return self._execute_by_device_strict(target_devices, mode, progress_callback, stop_callback)
@@ -1331,8 +1332,14 @@ class ConfigExecutor:
 
 
     async def _async_execute_by_command(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
-        """异步版的命令优先策略实现：对每条命令并发执行到所有在线设备。"""
-        self._log(f"[async] 使用命令优先策略，将对 {len(devices)} 台设备执行命令", "INFO")
+        """
+        异步版命令优先策略 V2 — 全并发加速
+
+        所有设备×所有命令一次性提交到 asyncio，通过
+        asyncio.Semaphore(config_concurrent) 控制总并发度。
+        取代原有"命令内设备并发，命令间串行"的模式。
+        """
+        self._log(f"[async V2] 使用命令优先全并发策略，将对 {len(devices)} 台设备执行命令", "INFO")
 
         base_commands = self.config.get("cgi_commands", [])
         if not base_commands:
@@ -1344,6 +1351,8 @@ class ConfigExecutor:
         if not online_devices:
             self._log("没有在线设备需要执行命令", "WARNING")
             return []
+
+        self._log(f"[async V2] 在线设备数: {len(online_devices)}, 基础命令数: {len(base_commands)}", "INFO")
 
         # 结果初始化
         results = [{
@@ -1360,21 +1369,21 @@ class ConfigExecutor:
             'total_time': 0
         } for d in online_devices]
 
+        # 快速 IP → 结果索引 映射
+        ip_to_idx = {d.ip: i for i, d in enumerate(online_devices)}
+
+        # 并发控制：总并发度 = config_concurrent
         semaphore = asyncio.Semaphore(self.config_concurrent)
 
-        for cmd_idx, base_cmd in enumerate(base_commands, 1):
-            if self._is_stopped() or (stop_callback and stop_callback()):
-                self._log("配置被停止 (async 命令优先)", "WARNING")
-                break
+        # ---- 生成所有任务 (dev × cmd) ----
+        all_tasks: List[asyncio.Task] = []
 
-            self._log(f"[async] 执行命令 {cmd_idx}/{len(base_commands)}: {base_cmd}", "INFO")
+        for dev in online_devices:
+            if not self._is_device_eligible_for_config(dev):
+                continue
 
-            # 为每个设备生成命令并提交异步任务
-            tasks = []
-            for dev in online_devices:
-                if not self._is_device_eligible_for_config(dev):
-                    continue
-
+            for cmd_idx, base_cmd in enumerate(base_commands, 1):
+                # 变量过滤 / 自定义命令生成
                 if mode == "customized" and dev.variables:
                     cmd = self._generate_custom_command(base_cmd, dev.variables)
                     if not cmd:
@@ -1384,73 +1393,91 @@ class ConfigExecutor:
                         continue
                     cmd = base_cmd
 
-                async def _send_with_sem(d, c):
+                async def _send_one(device, command_text, command_index):
+                    # 内部检查停止标志（每任务执行前检查）
+                    if self._is_stopped() or (stop_callback and stop_callback()):
+                        return device, command_index, False, "已停止"
+
                     async with semaphore:
                         try:
-                            # AsyncIOManager.send_command_async返回5个元素的元组，我们只需要前两个
-                            result = await self.async_manager.send_command_async(d, c)
+                            result = await self.async_manager.send_command_async(device, command_text)
                             ok, msg = result[0], result[1]
                         except asyncio.CancelledError:
                             ok, msg = False, '已取消'
                         except Exception as e:
                             ok, msg = False, f'异步请求异常: {e}'
-                        return d, ok, msg
+                        return device, command_index, ok, msg
 
-                tasks.append(asyncio.create_task(_send_with_sem(dev, cmd)))
+                task = asyncio.create_task(
+                    _send_one(dev, cmd, cmd_idx)
+                )
+                all_tasks.append(task)
 
-            if not tasks:
+        if not all_tasks:
+            self._log("[async V2] 没有可执行的任务（可能所有命令都含变量且非 customized 模式）", "WARNING")
+            return []
+
+        self._log(f"[async V2] 总提交任务数: {len(all_tasks)}", "INFO")
+
+        # ---- 一次性等待所有任务完成 ----
+        completed_results = await asyncio.gather(*all_tasks, return_exceptions=True)
+
+        # ---- 汇总结果 ----
+        for completed in completed_results:
+            if isinstance(completed, Exception):
+                self._log(f"[async V2] 任务异常: {completed}", "ERROR")
                 continue
 
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+            try:
+                dev, cmd_idx, ok, msg = completed
+            except (ValueError, TypeError) as e:
+                self._log(f"[async V2] 结果解析异常: {e}", "ERROR")
+                continue
 
-            for t in done:
-                try:
-                    dev, ok, msg = t.result()
-                except Exception as e:
-                    self._log(f"异步命令执行异常: {e}", "ERROR")
-                    continue
+            idx = ip_to_idx.get(dev.ip)
+            if idx is None:
+                continue
 
-                idx = online_devices.index(dev)
-                results[idx]['total_commands'] += 1
-                if ok:
-                    results[idx]['success_commands'] += 1
-                else:
-                    results[idx]['failed_commands'] += 1
-                    if results[idx]['failure_details']:
-                        results[idx]['failure_details'] += "; "
-                    results[idx]['failure_details'] += f"命令{cmd_idx}: {msg}"
-                    self.log_manager.log_failure(dev, f"命令执行失败: {msg}")
+            results[idx]['total_commands'] += 1
+            if ok:
+                results[idx]['success_commands'] += 1
+            else:
+                results[idx]['failed_commands'] += 1
+                if results[idx]['failure_details']:
+                    results[idx]['failure_details'] += "; "
+                results[idx]['failure_details'] += f"命令{cmd_idx}: {msg}"
+                self.log_manager.log_failure(dev, f"命令执行失败: {msg}")
 
-                # 更新全局进度
-                self._completed_tasks += 1
+            # 更新全局进度
+            self._completed_tasks += 1
 
-            # progress callback
-            if progress_callback:
-                progress = (self._completed_tasks / self._total_tasks * 100) if self._total_tasks > 0 else 0
-                stats = {
-                    'completed': self._completed_tasks,
-                    'total': self._total_tasks,
-                    'success': sum(r['success_commands'] for r in results),
-                    'failed': sum(r['failed_commands'] for r in results),
-                    'devices_updated': self._get_devices_update_info(online_devices)
-                }
-                try:
-                    progress_callback('configuring', progress, stats)
-                except Exception:
-                    pass
+        # ---- 进度回调（批量汇总后触发一次） ----
+        if progress_callback:
+            progress = (self._completed_tasks / self._total_tasks * 100) if self._total_tasks > 0 else 0
+            stats = {
+                'completed': self._completed_tasks,
+                'total': self._total_tasks,
+                'success': sum(r['success_commands'] for r in results),
+                'failed': sum(r['failed_commands'] for r in results),
+                'devices_updated': self._get_devices_update_info(online_devices),
+            }
+            try:
+                progress_callback('configuring', progress, stats)
+            except Exception:
+                pass
 
-        # finalize results
+        # ---- 最终化结果 ----
         end_time = datetime.now()
         for i, (res, dev) in enumerate(zip(results, online_devices)):
             res['end_time'] = end_time.strftime("%H:%M:%S")
             start_time = datetime.strptime(res['start_time'], "%H:%M:%S")
             res['total_time'] = (end_time - start_time).total_seconds()
             total_executed = res['success_commands'] + res['failed_commands']
-            res['success'] = res['success_commands'] > 0 if total_executed>0 else False
-            dev.status = '成功' if res['success'] else ('部分完成' if total_executed>0 else dev.status)
-            dev.last_message = f"完成: {total_executed}/{res['total_commands']}命令" if res['total_commands']>0 else dev.last_message
+            res['success'] = res['success_commands'] > 0 if total_executed > 0 else False
+            dev.status = '成功' if res['success'] else ('部分完成' if total_executed > 0 else dev.status)
+            dev.last_message = f"完成: {total_executed}/{res['total_commands']}命令" if res['total_commands'] > 0 else dev.last_message
 
-        # final progress
+        # ---- 最终进度 ----
         if progress_callback:
             total_executed = sum(r['success_commands'] + r['failed_commands'] for r in results)
             stats = {
@@ -1458,14 +1485,14 @@ class ConfigExecutor:
                 "total": self._total_tasks,
                 "success": sum(r['success_commands'] for r in results),
                 "failed": sum(r['failed_commands'] for r in results),
-                "devices_updated": self._get_devices_update_info(online_devices)
+                "devices_updated": self._get_devices_update_info(online_devices),
             }
             try:
                 progress_callback("configuring", 100, stats)
             except Exception:
                 pass
 
-        self._log(f"[async] 命令优先策略完成: 共{len(results)} 个结果", "INFO")
+        self._log(f"[async V2] 命令优先全并发策略完成: 提交 {len(all_tasks)} 任务, {len(results)} 个设备结果", "INFO")
         return results
 
     # ====================== 异步实现结束 ==============================
