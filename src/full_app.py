@@ -610,7 +610,7 @@ class DahuaConfigApp(tk.Tk):
         if result:
             try:
                 # 加载默认配置
-                self.config_data = ConfigManager.load_default_config()
+                self.config_data = ConfigManager.get_default_config()
                 self.config_tab.config = self.config_data
                 self.config_tab.load_config_to_ui()
                 self.log_message("已恢复默认配置", "SUCCESS")

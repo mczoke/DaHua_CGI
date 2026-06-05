@@ -1,5 +1,13 @@
 # 变更日志
 
+## [V9.6-alpha] - 2026-06-05
+### 修复：test_full_app.py 30个遗留失败 → 全部通过
+- `_RealishFrame` 增强：添加 `__getattr__` 自动 Mock 机制，支持 heading/column/title/geometry/cget 等
+- `messagebox`/`filedialog` 直接 Mock，使 assert_called 断言可用
+- 修复 `full_app.py`：`load_default_config()` → `get_default_config()`（不存在的方法）
+- ScrolledText 改用 `_RealishFrame` 避免 MagicMock.get() 返回非字符串
+- 测试结果：33/33 ✅，全量 307/307 ✅
+
 ## [V9.6-alpha] - 2026-06-03
 ### Task6a - API 文档 (Claw-Claude)
 - 新增 `docs/api/` 目录，含 6 份文档（1361 行）

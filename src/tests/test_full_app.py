@@ -32,11 +32,33 @@ class _RealishFrame(_Realish):
         self.pack = MagicMock()
         self.pack_forget = MagicMock()
         self.config = MagicMock()
+        self.heading = MagicMock()
+        self.column = MagicMock()
+        self.insert = MagicMock()
+        self.delete = MagicMock()
+        self.get_children = MagicMock(return_value=[])
+        self.item = MagicMock(return_value={'values': []})
+        self.selection = MagicMock(return_value=[])
+        self.place = MagicMock()
+        self.cget = MagicMock(return_value='SystemButtonFace')
+        self.title = MagicMock()
+        self.geometry = MagicMock()
+
+    def __getattr__(self, name):
+        """Auto-create MagicMock for any tk attribute not explicitly defined."""
+        if name == '_last_child_ids':
+            return None
+        m = MagicMock()
+        object.__setattr__(self, name, m)
+        return m
 
     def after(self, ms, func, *args):
         func(*args) if callable(func) else None
 
     def update_idletasks(self):
+        pass
+
+    def entryconfig(self, *args, **kw):
         pass
 
 
@@ -60,12 +82,23 @@ tk_patchers = [
     patch('tkinter.IntVar'),
     patch('tkinter.Label'),
     patch('tkinter.Checkbutton'),
+    patch('tkinter.Menu', _Realish),
+    patch('tkinter.Canvas', _Realish),
+    # Patch scrolledtext ASAP — full_app.py imports it
+    patch('tkinter.scrolledtext.ScrolledText', _RealishFrame),
 ]
 for p in tk_patchers:
     p.start()
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
+# Patch filedialog and messagebox directly — they're constants imported by full_app.py
+filedialog.asksaveasfilename = MagicMock(return_value="/tmp/test.log")
+filedialog.askopenfilename = MagicMock(return_value="")
+filedialog.asksaveasfilename = MagicMock(return_value="")
+messagebox.showwarning = MagicMock()
+messagebox.askyesno = MagicMock(return_value=False)
 
 # Patch ttk
 ttk.Frame = _RealishFrame
@@ -77,12 +110,8 @@ ttk.Notebook = _RealishFrame
 ttk.Combobox = _RealishFrame
 ttk.Checkbutton = _RealishFrame
 ttk.Progressbar = _RealishFrame
-ttk.Treeview = MagicMock
+ttk.Treeview = _RealishFrame  # Use same _RealishFrame for Treeview
 ttk.Scrollbar = MagicMock
-
-# Make scrolledtext.ScrolledText create a MagicMock
-import tkinter.scrolledtext
-tkinter.scrolledtext.ScrolledText = MagicMock
 
 from utils.device_manager import DeviceInfo
 from full_app import DeviceTableFrame, LogPanel, ConfigTab, DahuaConfigApp
@@ -167,7 +196,10 @@ class TestDeviceTableFrame:
         frame.devices = [dev]
         frame._item_by_index = {0: MagicMock()}
         frame.tree = MagicMock()
-        frame.tree.item.return_value = {'values': ["✓", "1", "10.0.0.1", "80", "在线", "", 0]}
+        # tree.item(iid, option) → tree.item(*args) → use side_effect
+        # ttk.Treeview.item(iid, option=None) returns the list for that option
+        expected_vals = ["✓", "1", "10.0.0.1", "80", "在线", "", 0]
+        frame.tree.item.side_effect = lambda *args, **kw: expected_vals
         frame.update_device_status(0, "配置完成", online=True, message="OK")
         assert dev.status == "配置完成"
         assert dev.last_message == "OK"
@@ -213,8 +245,11 @@ class TestLogPanel:
         parent = _RealishFrame()
         panel = LogPanel(parent)
         panel.text = MagicMock()
-        filedialog.asksaveasfilename.return_value = None
-        panel.save()
+        panel.text.get.return_value = "test log content"
+        saved = getattr(filedialog, 'asksaveasfilename', MagicMock())
+        saved.return_value = None
+        with patch.object(builtins, 'open', MagicMock()):
+            panel.save()
 
 
 # ============================================================================
@@ -339,7 +374,7 @@ class TestDahuaConfigApp:
         app = DahuaConfigApp()
         messagebox.askyesno.return_value = True
         mock_default = {"timeout": 0, "cgi_commands": []}
-        with patch.object(ConfigManager, 'load_default_config', return_value=mock_default):
+        with patch('full_app.ConfigManager.get_default_config', return_value=mock_default):
             app.reset_to_default()
 
     def test_export_devices_no_devices(self):
@@ -361,15 +396,15 @@ class TestDahuaConfigApp:
 
     def test_open_log_directory(self):
         app = DahuaConfigApp()
-        app.log_manager.open_log_directory.return_value = True
-        app.open_log_directory()
+        with patch.object(app.log_manager, 'open_log_directory', return_value=True):
+            app.open_log_directory()
 
     def test_open_log_directory_fail(self):
         app = DahuaConfigApp()
-        app.log_manager.open_log_directory.return_value = False
-        app.open_log_directory()
+        with patch.object(app.log_manager, 'open_log_directory', return_value=False):
+            app.open_log_directory()
 
     def test_view_failure_logs(self):
         app = DahuaConfigApp()
-        app.log_manager.open_failure_logs.return_value = True
-        app.view_failure_logs()
+        with patch.object(app.log_manager, 'open_failure_logs', return_value=True):
+            app.view_failure_logs()

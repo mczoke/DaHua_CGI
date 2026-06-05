@@ -4,22 +4,11 @@
 - (已启动，见进行中)
 
 ## 进行中
-- [x] Task6 - API 文档 + 集成测试 ✅
-  - Claw-Claude → API 文档（6 文件，1361 行，覆盖 5 模块 ✅）
-  - OpenClaw → 集成测试（test_full_pipeline_integration.py 19/19 ✅）
-- [x] **Task7 - 性能优化** ✅
-  - **分项A：async_executor 连接池调优** → Claw-Claude ✅ b2cb2c6
-  - **分项B：device_manager 批量设备扫描加速** → Claw-CodeX ✅ e41a366
-- [ ] **Task8 - CGI 命令扩展：配置列表方式**（Claw-Claude ▶️ 已分派）
-  - config.yaml 添加 `cgi_commands` 配置段（命令名、URL、参数、超时、认证）
-  - cgi_reference_manager.py 从 config.yaml 读取命令定义（不再硬编码）
-  - 新增 config_only 测试用例验证配置加载
+- [ ] **Task9 - 多设备并发**（待分派）
+  - 批量设备并行 CGI 请求 + 聚合结果
 
 ## 待办
-- [ ] **Task8 - CGI 命令扩展**
-  - 添加告警、智能分析等更多大华 CGI 命令
-- [ ] **Task9 - 多设备并发**
-  - 批量设备并行 CGI 请求 + 聚合结果
+- (无)
 
 ## 已完成
 - [x] Task1 - 配置管理重构 (Claw-CodeX)
