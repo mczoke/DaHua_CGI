@@ -1,19 +1,20 @@
 # 任务列表
 
 ## 进行中
-- [ ] **Task9 - 多设备并发 + 聚合报表**（Claw-Claude ✅ 已完成编码测试）
-  - [x] **分项A：聚合结果管理器** — `aggregate_collector.py` ✅
-    - `AggregateResultCollector` 类：跨设备结果合并、按命令/设备维度统计
-    - 输出结构化报表（dict）：总设备数、成功/失败数、命令级成功/失败明细、耗时统计
-  - [x] **分项B：命令优先策略并发加速** — `_async_execute_by_command` V2 ✅
-    - 改为真正全并发：所有设备×命令一次性 `asyncio.gather`
-    - 控制并发上限使用 `config_concurrent`（Semaphore）
-  - [x] **分项C：集成测试** — `test_multi_device_async.py` ✅ 15/15
-    - 聚合报表基础功能 + 部分失败 + 空场景
-    - 并发限制、停止、变量过滤、空设备、无命令
+- [x] **Task9 - 多设备并发 + 聚合报表** ✅
+  - **分项A：聚合结果管理器** — 已完成
+    - `src/utils/aggregate_collector.py`：AggregateResultCollector + 3个数据类，267行
+    - 输出结构化报表（dict + text），支持按设备/命令维度统计
+  - **分项B：命令优先策略并发加速** — 已完成
+    - `_async_execute_by_command` 改为全并发：所有设备×命令同时 asyncio.gather
+    - Semaphore(config_concurrent) 控制并发上限
+  - **分项C：集成测试** — 已完成
+    - `test_multi_device_async.py`：15个测试覆盖聚合报表/并发执行/部分失败
+    - 全量测试 322/322 ✅
 
 ## 待办
-- (无)
+- [ ] git commit Task9 变更（等待 Boss 确认）
+- [ ] 推送到远程仓库（如有）
 
 ## 已完成
 - [x] Task1 - 配置管理重构 (Claw-CodeX)
@@ -37,3 +38,4 @@
 - [x] Task7 - 性能优化 ✅
 - [x] Task8 - CGI 命令扩展：告警/智能分析/设备管理 ✅
 - [x] 修复 test_full_app.py 30个遗留失败 → 33/33 ✅ | 全量 307/307 ✅
+- [x] Task9 - 多设备并发 + 聚合报表 ✅ | 全量 322/322 ✅
