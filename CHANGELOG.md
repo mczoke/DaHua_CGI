@@ -1,12 +1,19 @@
 # 变更日志
 
 ## [V9.6-alpha] - 2026-06-07
-### GUI 升级 — 聚合报表 Tab + 导出报表 (Hermes ✅)
+### GUI 升级 — 聚合报表 Tab + 导出报表 (Claw-Claude ✅)
 - 标题版本号 V9.5 → V9.6-alpha
 - 新增 `AggregateReportTab`：聚合报表展示 Tab（成功/失败数、按命令统计、按设备统计）
 - 新增\"导出报表\"按钮（CSV/Excel/TXT），调用 `AggregateResultCollector`
 - 配置执行完成后自动生成聚合报表，展示在\"聚合报表\" Tab
 - 更新测试：test_full_app.py 33 → 40 ✅（+7）
+
+### Web UI 构建 (Claw-CodeX ✅)
+- 新建 `src/web/` 目录：Flask 应用（566 行）
+- 路由：设备管理 / 配置执行 / 聚合报表 / 日志查看 / 配置管理
+- 前端：Bootstrap 5 + JS Fetch API（5 个模板 + app.js + style.css）
+- 后台全链路复用 `src/utils/` 模块（ConfigManager/DeviceDetector/ConfigExecutor/AggregateResultCollector）
+- 启动：`python src/web/app.py`
 
 ## [V9.6-alpha] - 2026-06-05 (更新)
 ### Task9 - 多设备并发 + 聚合报表 (Claw-Claude ✅)

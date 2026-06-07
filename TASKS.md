@@ -10,11 +10,19 @@
     - Semaphore(config_concurrent) 控制并发上限
   - **分项C：集成测试** — 已完成
     - `test_multi_device_async.py`：15个测试覆盖聚合报表/并发执行/部分失败
-    - 全量测试 322/322 ✅
+    - 全量测试 329/329 ✅（GUI 升级新增 7 个）
+- [x] **GUI 升级** (Claw-Claude)
+  - 版本号 V9.5 → V9.6-alpha
+  - 新增聚合报表 Tab + 导出报表按钮
+  - test_full_app.py: 33→40 ✅
+- [x] **Web UI 构建** (Claw-CodeX)
+  - `src/web/`：Flask 应用，566 行
+  - 设备管理/配置执行/聚合报表/日志查看
+  - 启动：`python src/web/app.py`
 
 ## 待办
-- [ ] git commit Task9 变更（等待 Boss 确认）
-- [ ] 推送到远程仓库（如有）
+- [ ] 推送到远程仓库（远程仓库已不存在）
+- [ ] 配置远程 Git 仓库
 
 ## 已完成
 - [x] Task1 - 配置管理重构 (Claw-CodeX)

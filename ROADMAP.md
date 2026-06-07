@@ -25,7 +25,7 @@
   - 完成异步执行器核心功能
   - 集成日志管理系统
   - 设备认证流程优化
-- [x] V9.6-alpha - 代码重构 & 功能增强 (2026-06-05)
+- [x] V9.6-alpha - 代码重构 & 功能增强 (2026-06-07)
   - 配置管理重构 (Task1 - Claw-CodeX)
   - 异步执行器优化 (Task2 - Claw-Claude)
   - 异常处理&日志优化 (Task3 - Claw-CodeX)
@@ -35,8 +35,10 @@
   - 性能优化 (Task7 - Claw-Claude+CodeX)
   - CGI命令扩展 (Task8 - Claw-Claude)
   - 多设备并发 + 聚合报表 (Task9 - Claw-Claude)
-  - 测试全部通过: 322/322
-- [ ] V10.0 - 重大升级
+  - GUI 升级：聚合报表 Tab + 导出报表 (Claw-Claude)
+  - Web UI 构建：Flask + 设备管理/配置/报表/日志 (Claw-CodeX)
+  - 测试全部通过: 329/329
+- [ ] V10.0 - 架构升级
   - 重构架构
   - 支持多设备并发
   - Web 界面管理
