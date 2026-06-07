@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 配置执行</h5>
+                <button class="btn btn-success" onclick="startExecute()"><i class="bi bi-play-fill"></i> 执行配置</button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- 左侧: 设备选择 -->
+                    <div class="col-md-4">
+                        <h6><i class="bi bi-hdd-stack"></i> 目标设备</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="selectedOnly" checked>
+                            <label class="form-check-label">仅选中的设备</label>
+                        </div>
+                        <div class="border rounded p-2 mb-3" style="max-height:200px;overflow-y:auto">
+                            <div id="execDeviceList" class="text-muted small">
+                                未加载设备
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 中间: 命令选择 -->
+                    <div class="col-md-4">
+                        <h6><i class="bi bi-list-check"></i> CGI 命令</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="selectAllCommands" onchange="toggleAllCommands(this)" checked>
+                            <label class="form-check-label">全选</label>
+                        </div>
+                        <div class="border rounded p-2" style="max-height:200px;overflow-y:auto" id="commandList">
+                            <div class="text-muted small">加载命令中...</div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧: 执行策略 -->
+                    <div class="col-md-4">
+                        <h6><i class="bi bi-diagram-3"></i> 执行策略</h6>
+                        <select class="form-select mb-3" id="execStrategy">
+                            <option value="device_first">设备优先（逐设备执行所有命令）</option>
+                            <option value="command_first">命令优先（逐命令遍历所有设备）</option>
+                        </select>
+                        <h6><i class="bi bi-info-circle"></i> 状态</h6>
+                        <div class="border rounded p-2" id="execStatus">
+                            <span class="text-muted">就绪</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 进度条 -->
+                <div id="execProgress" class="mt-3" style="display:none">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="execMsg">执行中...</span>
+                        <span id="execPercent">0%</span>
+                    </div>
+                    <div class="progress" style="height:12px">
+                        <div id="execBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <!-- 结果 -->
+                <div id="execResults" class="mt-3" style="display:none">
+                    <h6><i class="bi bi-table"></i> 执行结果</h6>
+                    <div class="table-responsive" style="max-height:400px;overflow-y:auto">
+                        <table class="table table-dark table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>设备IP</th>
+                                    <th>总命令</th>
+                                    <th>成功</th>
+                                    <th>失败</th>
+                                    <th>耗时(s)</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let commands = [];
+let execPollInterval = null;
+
+function loadCommands() {
+    fetch('/api/commands').then(r=>r.json()).then(d=>{
+        commands = d.commands || [];
+        renderCommands();
+    });
+}
+function renderCommands() {
+    const el = document.getElementById('commandList');
+    if (commands.length === 0) {
+        el.innerHTML = '<div class="text-muted small">没有可用命令</div>';
+        return;
+    }
+    let html = '';
+    commands.forEach((c, i) => {
+        html += `<div class="form-check">
+            <input class="form-check-input cmd-cb" type="checkbox" value="${c.name}" id="cmd_${i}" checked>
+            <label class="form-check-label" for="cmd_${i}">
+                <span class="badge bg-info">${c.name}</span>
+                <small class="text-muted">${c.description || ''}</small>
+            </label>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+
+function toggleAllCommands(cb) {
+    document.querySelectorAll('.cmd-cb').forEach(c => c.checked = cb.checked);
+}
+
+function refreshExecDevices() {
+    fetch('/api/devices').then(r=>r.json()).then(d=>{
+        const devices = d.devices || [];
+        const el = document.getElementById('execDeviceList');
+        const selected = devices.filter(x => x.selected);
+        el.innerHTML = selected.length
+            ? selected.map(x => `<div><span class="badge bg-secondary">${x.ip}:${x.port}</span> ${x.online?'<i class="bi bi-check-circle text-success"></i>':'<i class="bi bi-x-circle text-danger"></i>'}</div>`).join('')
+            : '<span class="text-muted">没有选中的设备</span>';
+    });
+}
+
+function startExecute() {
+    const selectedOnly = document.getElementById('selectedOnly').checked;
+    const strategy = document.getElementById('execStrategy').value;
+    const cmdCbs = document.querySelectorAll('.cmd-cb:checked');
+    const cmds = Array.from(cmdCbs).map(c => c.value);
+
+    if (cmds.length === 0) { showToast('请选择至少一条命令', 'warning'); return; }
+
+    // 修改执行状态提示
+    document.getElementById('execStatus').innerHTML = '<span class="text-warning">正在执行...</span>';
+    document.getElementById('execProgress').style.display = 'block';
+    document.getElementById('execBar').style.width = '0%';
+    document.getElementById('execPercent').textContent = '0%';
+    document.getElementById('execMsg').textContent = '启动执行...';
+    document.getElementById('execResults').style.display = 'none';
+
+    fetch('/api/execute/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            selected_only: selectedOnly,
+            strategy: strategy,
+            commands: cmds,
+        })
+    }).then(r=>r.json()).then(d=>{
+        if (d.error) { showToast(d.error, 'danger'); document.getElementById('execStatus').innerHTML = '<span class="text-danger">' + d.error + '</span>'; return; }
+        showToast(d.message, 'success');
+        // 开始轮询进度
+        if (execPollInterval) clearInterval(execPollInterval);
+        execPollInterval = setInterval(pollExecProgress, 500);
+    });
+}
+
+function pollExecProgress() {
+    fetch('/api/execute/status').then(r=>r.json()).then(s=>{
+        const p = s.progress || {};
+        const pc = p.percent || 0;
+        document.getElementById('execBar').style.width = pc + '%';
+        document.getElementById('execPercent').textContent = pc + '%';
+        document.getElementById('execMsg').textContent = p.message || '执行中...';
+
+        if (s.completed) {
+            clearInterval(execPollInterval);
+            execPollInterval = null;
+            document.getElementById('execStatus').innerHTML = '<span class="text-success">执行完成</span>';
+            loadResults();
+        } else if (!s.running) {
+            clearInterval(execPollInterval);
+            execPollInterval = null;
+            document.getElementById('execStatus').innerHTML = '<span class="text-muted">已停止</span>';
+        }
+    });
+}
+
+function loadResults() {
+    fetch('/api/execute/results').then(r=>r.json()).then(d => {
+        if (d.error) { showToast(d.error, 'warning'); return; }
+        const results = d.results || [];
+        const report = d.report;
+        if (report) {
+            showReportToast(report);
+        }
+        renderResults(results);
+        document.getElementById('execResults').style.display = 'block';
+    });
+}
+
+function renderResults(results) {
+    const tbody = document.getElementById('resultTableBody');
+    if (results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">无结果</td></tr>';
+        return;
+    }
+    let html = '';
+    results.forEach(r => {
+        const status = r.success ? '<span class="badge bg-success">成功</span>' : '<span class="badge bg-danger">失败</span>';
+        html += `<tr>
+            <td>${r.ip || '--'}</td>
+            <td>${r.total_commands || 0}</td>
+            <td class="text-success">${r.success_commands || 0}</td>
+            <td class="text-danger">${r.failed_commands || 0}</td>
+            <td>${(r.total_time || 0).toFixed(1)}</td>
+            <td>${status}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+function showReportToast(report) {
+    const overview = report.总览 || {};
+    const msg = `执行完成: ${overview.成功数 || 0}成功 / ${overview.失败数 || 0}失败, 成功率${overview.成功率 || 0}%`;
+    showToast(msg, 'success');
+    document.getElementById('execMsg').textContent = msg;
+}
+
+loadCommands();
+setInterval(refreshExecDevices, 3000);
+refreshExecDevices();
+</script>
+{% endblock %}

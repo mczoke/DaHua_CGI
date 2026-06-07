@@ -114,7 +114,8 @@ ttk.Treeview = _RealishFrame  # Use same _RealishFrame for Treeview
 ttk.Scrollbar = MagicMock
 
 from utils.device_manager import DeviceInfo
-from full_app import DeviceTableFrame, LogPanel, ConfigTab, DahuaConfigApp
+from utils.aggregate_collector import AggregateResultCollector, AggregateReport, DeviceResultSummary, CommandSummary
+from full_app import DeviceTableFrame, LogPanel, ConfigTab, DahuaConfigApp, AggregateReportTab
 
 
 # ============================================================================
@@ -408,3 +409,85 @@ class TestDahuaConfigApp:
         app = DahuaConfigApp()
         with patch.object(app.log_manager, 'open_failure_logs', return_value=True):
             app.view_failure_logs()
+
+    def test_export_report_no_report(self):
+        app = DahuaConfigApp()
+        app.report_tab.report = None
+        app.export_report()
+        messagebox.showwarning.assert_called()
+
+    def test_export_report_csv(self):
+        app = DahuaConfigApp()
+        report = AggregateReport(
+            total_devices=2, online_devices=1, skipped_devices=1,
+            total_commands=3, success_count=2, failed_count=1,
+            success_rate=66.67, total_duration=10.5,
+            per_device=[
+                DeviceResultSummary(ip="10.0.0.1", port="80", status="成功", total_commands=2, success=2, failed=0, duration=5.0),
+                DeviceResultSummary(ip="10.0.0.2", port="80", status="在线", total_commands=0, success=0, failed=0, duration=0.0),
+            ],
+            per_command={"__all_commands__": CommandSummary(command_name="__all_commands__", total_attempts=3, success=2, failed=1, avg_duration=3.5, failure_rate=33.33)},
+            failure_details=[],
+        )
+        app.report_tab.report = report
+        filedialog.asksaveasfilename.return_value = "/tmp/test_report.csv"
+        with patch('builtins.open', MagicMock()), patch('csv.writer') as mock_writer:
+            app.export_report()
+        assert app.report_tab.report is report  # unchanged
+
+    def test_export_report_cancelled(self):
+        app = DahuaConfigApp()
+        report = AggregateReport(total_devices=1, online_devices=1, per_device=[], per_command={}, failure_details=[])
+        app.report_tab.report = report
+        filedialog.asksaveasfilename.return_value = None
+        app.export_report()  # just ensures no crash
+
+
+# ============================================================================
+# AggregateReportTab
+# ============================================================================
+
+class TestAggregateReportTab:
+    def test_init(self):
+        parent = _RealishFrame()
+        tab = AggregateReportTab(parent)
+        assert tab is not None
+
+    def test_show_report(self):
+        parent = _RealishFrame()
+        tab = AggregateReportTab(parent)
+        report = AggregateReport(
+            total_devices=1, online_devices=1,
+            total_commands=2, success_count=2, failed_count=0, success_rate=100.0,
+            per_device=[DeviceResultSummary(ip="10.0.0.1", port="80", status="成功", total_commands=2, success=2, failed=0, duration=1.0)],
+            per_command={},
+            failure_details=[],
+        )
+        tab.text = MagicMock()
+        tab.show_report(report)
+        assert tab.report is report
+        tab.text.delete.assert_called_once()
+        tab.text.insert.assert_called_once()
+
+    def test_clear_report(self):
+        parent = _RealishFrame()
+        tab = AggregateReportTab(parent)
+        tab.report = AggregateReport(total_devices=1, per_device=[], per_command={}, failure_details=[])
+        tab.text = MagicMock()
+        tab.clear_report()
+        assert tab.report is None
+        tab.text.delete.assert_called_once()
+
+    def test_show_report_with_backend(self):
+        """Test show_report using real AggregateResultCollector.to_summary_text"""
+        parent = _RealishFrame()
+        tab = AggregateReportTab(parent)
+        report = AggregateResultCollector.collect(
+            results=[{"ip": "10.0.0.1", "port": "80", "success": True, "total_commands": 2, "success_commands": 2, "failed_commands": 0, "total_time": 1.0}],
+            devices=[make_device(ip="10.0.0.1", online=True, index=0)],
+            start_time=datetime.now(),
+        )
+        tab.text = MagicMock()
+        tab.show_report(report)
+        tab.text.delete.assert_called_once()
+        assert tab.report.total_devices == 1

@@ -1,5 +1,13 @@
 # 变更日志
 
+## [V9.6-alpha] - 2026-06-07
+### GUI 升级 — 聚合报表 Tab + 导出报表 (Hermes ✅)
+- 标题版本号 V9.5 → V9.6-alpha
+- 新增 `AggregateReportTab`：聚合报表展示 Tab（成功/失败数、按命令统计、按设备统计）
+- 新增\"导出报表\"按钮（CSV/Excel/TXT），调用 `AggregateResultCollector`
+- 配置执行完成后自动生成聚合报表，展示在\"聚合报表\" Tab
+- 更新测试：test_full_app.py 33 → 40 ✅（+7）
+
 ## [V9.6-alpha] - 2026-06-05 (更新)
 ### Task9 - 多设备并发 + 聚合报表 (Claw-Claude ✅)
 #### 分项A：聚合结果管理器

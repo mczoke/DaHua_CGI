@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-V9.5 - 完整主界面（简化）
+V9.6-alpha - 完整主界面 + 聚合报表
 提供：
 - 从 Excel 加载设备
 - Ping 检测
 - 编辑 CGI 命令与参数
 - 启动/停止配置（使用 `ConfigExecutor(use_async=True)`）
+- 聚合报表 Tab + 导出报表（CSV/Excel）
 """
 
 import os
@@ -20,6 +21,7 @@ import json
 from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
 from utils.device_manager import DeviceLoader, DeviceDetector, ConfigExecutor, DeviceInfo
+from utils.aggregate_collector import AggregateResultCollector, AggregateReport
 
 
 class DeviceTableFrame(ttk.Frame):
@@ -274,10 +276,36 @@ class ConfigTab(ttk.Frame):
             self.save_callback(self.config)
 
 
+class AggregateReportTab(ttk.Frame):
+    """聚合报表展示 Tab"""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.report = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        self.text = scrolledtext.ScrolledText(self, height=22, font=('Consolas', 9))
+        self.text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.text.insert(tk.END, "聚合报表将在配置执行完成后自动生成。\n")
+
+    def show_report(self, report: AggregateReport):
+        """显示聚合报表内容"""
+        self.report = report
+        self.text.delete('1.0', tk.END)
+        text = AggregateResultCollector.to_summary_text(report)
+        self.text.insert(tk.END, text)
+
+    def clear_report(self):
+        """清空报表"""
+        self.report = None
+        self.text.delete('1.0', tk.END)
+        self.text.insert(tk.END, "聚合报表将在配置执行完成后自动生成。\n")
+
+
 class DahuaConfigApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('DaHua CGI 批量配置 - V9.5')
+        self.title('DaHua CGI 批量配置 - V9.6-alpha')
         self.geometry('1100x700')
 
         self.config_data = ConfigManager.load_config()
@@ -287,6 +315,7 @@ class DahuaConfigApp(tk.Tk):
 
         self.executor = None
         self.executor_thread = None
+        self._start_time = None
 
         self._build_ui()
 
@@ -313,9 +342,11 @@ class DahuaConfigApp(tk.Tk):
         self.reset_config_btn = ttk.Button(btn_frame, text='默认配置', command=self.reset_to_default)
         self.view_failures_btn = ttk.Button(btn_frame, text='查看失败', command=self.view_failure_logs)
         self.open_logs_btn = ttk.Button(btn_frame, text='日志目录', command=self.open_log_directory)
+        self.export_report_btn = ttk.Button(btn_frame, text='导出报表', command=self.export_report)
 
         
         # 按固定顺序排列所有按钮（将新的日志按钮放在保存配置按钮前面）
+        self.export_report_btn.pack(side=tk.RIGHT, padx=4)
         self.open_logs_btn.pack(side=tk.RIGHT, padx=4)
         self.view_failures_btn.pack(side=tk.RIGHT, padx=4)
         self.reset_config_btn.pack(side=tk.RIGHT, padx=4)
@@ -341,8 +372,10 @@ class DahuaConfigApp(tk.Tk):
         self.nb.pack(fill=tk.BOTH, expand=True)
         self.config_tab = ConfigTab(self.nb, self.config_data, save_callback=self.save_config)
         self.log_panel = LogPanel(self.nb)
+        self.report_tab = AggregateReportTab(self.nb)
         self.nb.add(self.log_panel, text='运行日志')
-        self.nb.add(self.config_tab, text='配置CGI')        
+        self.nb.add(self.config_tab, text='配置CGI')
+        self.nb.add(self.report_tab, text='聚合报表')
 
         
         # 创建底部进度条框架
@@ -475,11 +508,30 @@ class DahuaConfigApp(tk.Tk):
             except Exception:
                 _ui_update()
     
+        from datetime import datetime
+        self._start_time = datetime.now()
+    
         def _run():
             try:
                 self.log_message('开始批量配置', 'INFO')
                 res = self.executor.execute_batch(devices, mode=self.config_data.get('default_mode','standard'), exec_strategy=self.config_data.get('exec_strategy','device_first'), progress_callback=progress_cb, stop_callback=self.executor._is_stopped)
                 self.log_message(f'配置完成，结果设备数: {len(res)}', 'SUCCESS')
+                
+                # 生成聚合报表
+                try:
+                    report = AggregateResultCollector.collect(res, devices, self._start_time)
+                    def _show_report():
+                        try:
+                            self.report_tab.show_report(report)
+                            self.log_message(f'聚合报表已生成: 成功率 {report.success_rate:.1f}%', 'SUCCESS')
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _show_report)
+                    except Exception:
+                        _show_report()
+                except Exception as e:
+                    self.log_message(f'生成聚合报表失败: {e}', 'ERROR')
             except Exception as e:
                 self.log_message(f'配置异常: {e}', 'ERROR')
             finally:
@@ -620,10 +672,88 @@ class DahuaConfigApp(tk.Tk):
         """查看失败日志"""
         if not self.log_manager.open_failure_logs():
             self.log_message("打开失败日志失败，文件可能不存在", "ERROR")
+
     def open_log_directory(self):
         """打开日志目录"""
         if not self.log_manager.open_log_directory():
             self.log_message("打开日志目录失败，目录可能不存在", "ERROR")
+
+    def export_report(self):
+        """导出聚合报表"""
+        if not self.report_tab.report:
+            messagebox.showwarning('提示', '没有报表可导出，请先执行配置')
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title='导出聚合报表',
+            defaultextension='.csv',
+            filetypes=[('CSV文件', '*.csv'), ('Excel文件', '*.xlsx'), ('文本文件', '*.txt')]
+        )
+
+        if not filename:
+            return
+
+        try:
+            report = self.report_tab.report
+            ext = os.path.splitext(filename)[1].lower()
+
+            if ext == '.csv':
+                import csv
+                with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['聚合报表导出'])
+                    writer.writerow(['总览'])
+                    overview = AggregateResultCollector.to_dict(report)['总览']
+                    for k, v in overview.items():
+                        writer.writerow([k, v])
+                    writer.writerow([])
+                    writer.writerow(['设备维度'])
+                    writer.writerow(['IP', '端口', '状态', '总命令', '成功', '失败', '耗时(秒)', '最后消息'])
+                    for d in report.per_device:
+                        writer.writerow([d.ip, d.port, d.status, d.total_commands, d.success, d.failed, round(d.duration, 2), d.last_message])
+                    writer.writerow([])
+                    writer.writerow(['命令维度'])
+                    writer.writerow(['命令', '总尝试', '成功', '失败', '平均耗时(秒)', '失败率(%)'])
+                    for cmd_name, cs in report.per_command.items():
+                        writer.writerow([cmd_name, cs.total_attempts, cs.success, cs.failed, round(cs.avg_duration, 2), round(cs.failure_rate, 2)])
+            elif ext == '.xlsx':
+                try:
+                    import openpyxl
+                except ImportError:
+                    openpyxl = None
+                if openpyxl:
+                    wb = openpyxl.Workbook()
+                    ws = wb.active
+                    ws.title = '聚合报表'
+                    ws.append(['聚合报表导出'])
+                    ws.append(['总览'])
+                    overview = AggregateResultCollector.to_dict(report)['总览']
+                    for k, v in overview.items():
+                        ws.append([k, v])
+                    ws.append([])
+                    ws.append(['设备维度'])
+                    ws.append(['IP', '端口', '状态', '总命令', '成功', '失败', '耗时(秒)', '最后消息'])
+                    for d in report.per_device:
+                        ws.append([d.ip, d.port, d.status, d.total_commands, d.success, d.failed, round(d.duration, 2), d.last_message])
+                    ws.append([])
+                    ws.append(['命令维度'])
+                    ws.append(['命令', '总尝试', '成功', '失败', '平均耗时(秒)', '失败率(%)'])
+                    for cmd_name, cs in report.per_command.items():
+                        ws.append([cmd_name, cs.total_attempts, cs.success, cs.failed, round(cs.avg_duration, 2), round(cs.failure_rate, 2)])
+                    wb.save(filename)
+                else:
+                    # fallback to text file
+                    filename = os.path.splitext(filename)[0] + '.txt'
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(AggregateResultCollector.to_summary_text(report))
+            else:
+                # txt
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(AggregateResultCollector.to_summary_text(report))
+
+            self.log_message(f'报表已导出到: {filename}', 'SUCCESS')
+        except Exception as e:
+            self.log_message(f'导出报表失败: {e}', 'ERROR')
 
 
 if __name__ == '__main__':

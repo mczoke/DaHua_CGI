@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备管理</h5>
+                <div>
+                    <button class="btn btn-success btn-sm" onclick="pingSelected()"><i class="bi bi-wifi"></i> Ping检测</button>
+                    <button class="btn btn-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 进度条 -->
+                <div id="pingProgress" class="mb-3" style="display:none">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="pingStatus">检测中...</span>
+                        <span id="pingPercent">0%</span>
+                    </div>
+                    <div class="progress" style="height:8px">
+                        <div id="pingBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <!-- 设备统计 -->
+                <div class="row mb-3">
+                    <div class="col-3"><span class="badge bg-secondary" id="statTotal">总数: 0</span></div>
+                    <div class="col-3"><span class="badge bg-success" id="statOnline">在线: 0</span></div>
+                    <div class="col-3"><span class="badge bg-danger" id="statOffline">离线: 0</span></div>
+                    <div class="col-3"><span class="badge bg-primary" id="statSelected">选中: 0</span></div>
+                </div>
+
+                <!-- 选择操作 -->
+                <div class="btn-group btn-group-sm mb-2">
+                    <button class="btn btn-outline-light" onclick="selectMode('all')">全选</button>
+                    <button class="btn btn-outline-light" onclick="selectMode('none')">反选</button>
+                    <button class="btn btn-outline-light" onclick="selectMode('online')">选在线</button>
+                    <button class="btn btn-outline-light" onclick="selectMode('invert')">反选</button>
+                </div>
+
+                <!-- 设备表格 -->
+                <div class="table-responsive" style="max-height:600px;overflow-y:auto">
+                    <table class="table table-dark table-hover table-sm" id="deviceTable">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">#</th>
+                                <th style="width:40px"><input type="checkbox" onchange="toggleAll(this)"></th>
+                                <th>IP地址</th>
+                                <th>端口</th>
+                                <th>用户名</th>
+                                <th>状态</th>
+                                <th>在线</th>
+                                <th>消息</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceTableBody">
+                            <tr><td colspan="8" class="text-center text-muted">未加载设备，请上传 Excel 文件</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 上传 Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">上传设备列表</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="excelFile" class="form-label">选择 Excel 文件（.xlsx / .xls）</label>
+                    <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls">
+                </div>
+                <div class="alert alert-info">
+                    <small>Excel 需包含列: IP地址 / IP, 端口(可选), 用户名(可选), 密码(可选)</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="uploadExcel()">上传</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let deviceList = [];
+
+function showUploadModal() {
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+function uploadExcel() {
+    const fileInput = document.getElementById('excelFile');
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('请选择文件', 'warning');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    fetch('/api/devices/upload', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) { showToast(d.error, 'danger'); return; }
+            showToast(`加载成功: ${d.devices_count} 台设备`, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+            refreshDevices();
+        })
+        .catch(e => showToast('上传失败: ' + e, 'danger'));
+}
+
+function refreshDevices() {
+    fetch('/api/devices').then(r=>r.json()).then(d=>{
+        deviceList = d.devices || [];
+        renderDevices();
+    });
+}
+
+function renderDevices() {
+    const tbody = document.getElementById('deviceTableBody');
+    if (deviceList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">没有设备</td></tr>';
+        updateStats();
+        return;
+    }
+    let html = '';
+    deviceList.forEach((dev, i) => {
+        const statusBadge = dev.online
+            ? '<span class="badge bg-success">在线</span>'
+            : (dev.status === '未检测' ? '<span class="badge bg-secondary">未检测</span>' : '<span class="badge bg-danger">离线</span>');
+        html += `<tr>
+            <td>${i+1}</td>
+            <td><input type="checkbox" class="dev-cb" data-index="${i}" ${dev.selected?'checked':''} onchange="toggleDevice(${i})"></td>
+            <td>${dev.ip}</td>
+            <td>${dev.port}</td>
+            <td>${dev.username}</td>
+            <td>${statusBadge}</td>
+            <td>${dev.online ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>'}</td>
+            <td><small class="text-muted">${dev.last_message || ''}</small></td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    updateStats();
+}
+
+function updateStats() {
+    const total = deviceList.length;
+    const online = deviceList.filter(d => d.online).length;
+    const offline = deviceList.filter(d => !d.online && d.status !== '未检测').length;
+    const selected = deviceList.filter(d => d.selected).length;
+    document.getElementById('statTotal').textContent = `总数: ${total}`;
+    document.getElementById('statOnline').textContent = `在线: ${online}`;
+    document.getElementById('statOffline').textContent = `离线: ${offline}`;
+    document.getElementById('statSelected').textContent = `选中: ${selected}`;
+}
+
+function selectMode(mode) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: mode})
+    }).then(r=>r.json()).then(()=>refreshDevices());
+}
+
+function toggleAll(cb) {
+    selectMode(cb.checked ? 'all' : 'none');
+}
+
+function toggleDevice(idx) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'toggle', index: idx})
+    }).then(r=>r.json()).then(()=>refreshDevices());
+}
+
+function pingSelected() {
+    const selected = deviceList.filter(d => d.selected);
+    if (selected.length === 0) { showToast('没有选中的设备', 'warning'); return; }
+    document.getElementById('pingProgress').style.display = 'block';
+    document.getElementById('pingBar').style.width = '0%';
+    document.getElementById('pingPercent').textContent = '0%';
+    document.getElementById('pingStatus').textContent = `Ping检测 ${selected.length} 台设备...`;
+
+    fetch('/api/devices/ping', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({selected_only: true})
+    }).then(r=>r.json()).then(d=>{
+        if (d.error) { showToast(d.error, 'danger'); return; }
+        showToast(d.message, 'info');
+        // 轮询进度
+        const iv = setInterval(() => {
+            fetch('/api/devices/status').then(r=>r.json()).then(s=>{
+                const p = s.progress || {};
+                const pc = p.percent || 0;
+                document.getElementById('pingBar').style.width = pc + '%';
+                document.getElementById('pingPercent').textContent = pc + '%';
+                if (pc >= 100) {
+                    clearInterval(iv);
+                    document.getElementById('pingStatus').textContent = '检测完成';
+                    refreshDevices();
+                    setTimeout(()=>{document.getElementById('pingProgress').style.display='none';}, 2000);
+                }
+            });
+        }, 500);
+    });
+}
+
+function showToast(msg, type) {
+    const container = document.getElementById('toastContainer') || (()=>{
+        const c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.style.cssText = 'position:fixed;top:60px;right:20px;z-index:9999';
+        document.body.appendChild(c);
+        return c;
+    })();
+    const t = document.createElement('div');
+    t.className = `toast align-items-center text-bg-${type} border-0 show`;
+    t.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    container.appendChild(t);
+    setTimeout(()=>t.remove(), 4000);
+}
+
+// 每 3 秒自动刷新
+setInterval(refreshDevices, 3000);
+refreshDevices();
+</script>
+{% endblock %}

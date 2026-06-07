@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-speedometer2"></i> 仪表盘</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-3">
+                        <div class="border rounded p-3">
+                            <h3 id="dashDevices" class="text-primary">0</h3>
+                            <small class="text-muted">设备总数</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="border rounded p-3">
+                            <h3 id="dashOnline" class="text-success">0</h3>
+                            <small class="text-muted">在线</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="border rounded p-3">
+                            <h3 id="dashCommands" class="text-info">0</h3>
+                            <small class="text-muted">命令数</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="border rounded p-3">
+                            <h3 id="dashSuccess" class="text-warning">--</h3>
+                            <small class="text-muted">成功率</small>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6><i class="bi bi-lightning"></i> 快速操作</h6>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="/devices" class="btn btn-outline-primary"><i class="bi bi-upload"></i> 加载设备</a>
+                    <a href="/config" class="btn btn-outline-success"><i class="bi bi-play"></i> 执行配置</a>
+                    <a href="/reports" class="btn btn-outline-info"><i class="bi bi-bar-chart"></i> 查看报表</a>
+                    <a href="/logs" class="btn btn-outline-secondary"><i class="bi bi-journal-text"></i> 查看日志</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-info-circle"></i> 项目信息</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless">
+                    <tr><td>版本</td><td>V9.6-alpha (Web UI)</td></tr>
+                    <tr><td>框架</td><td>Flask + Bootstrap 5</td></tr>
+                    <tr><td>执行策略</td><td><span id="infoStrategy" class="badge bg-info">--</span></td></tr>
+                    <tr><td>认证方式</td><td><span id="infoAuth" class="badge bg-secondary">--</span></td></tr>
+                    <tr><td>日志级别</td><td><span id="infoLogLevel">--</span></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// 仪表盘初始化
+fetch('/api/devices').then(r=>r.json()).then(d=>{
+    document.getElementById('dashDevices').textContent = d.count || 0;
+});
+fetch('/api/commands').then(r=>r.json()).then(d=>{
+    document.getElementById('dashCommands').textContent = (d.commands||[]).length;
+});
+fetch('/api/config').then(r=>r.json()).then(d=>{
+    const c = d.config || {};
+    document.getElementById('infoStrategy').textContent = c.exec_strategy || '--';
+    document.getElementById('infoAuth').textContent = c.auth_method || '--';
+    document.getElementById('infoLogLevel').textContent = c.log_level || '--';
+});
+// 定时刷新设备状态
+setInterval(()=>{
+    fetch('/api/devices').then(r=>r.json()).then(d=>{
+        document.getElementById('dashDevices').textContent = d.count || 0;
+        const online = (d.devices||[]).filter(x=>x.online).length;
+        document.getElementById('dashOnline').textContent = online;
+    });
+}, 3000);
+setInterval(()=>{
+    fetch('/api/execute/status').then(r=>r.json()).then(d=>{
+        if (d.completed && d.report) {
+            document.getElementById('dashSuccess').textContent = (d.report.总览?.成功率 ?? '--') + '%';
+        }
+    });
+}, 3000);
+</script>
+{% endblock %}

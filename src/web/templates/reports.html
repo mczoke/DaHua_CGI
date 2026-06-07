@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> 聚合报表</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-info" onclick="exportReport('json')"><i class="bi bi-filetype-json"></i> JSON</button>
+                    <button class="btn btn-sm btn-outline-success" onclick="exportReport('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
+                    <button class="btn btn-sm btn-outline-light" onclick="exportReport('txt')"><i class="bi bi-filetype-txt"></i> TXT</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 总览 -->
+                <div id="reportOverview" class="row text-center mb-4">
+                    <div class="text-muted py-4">尚无报表数据，请先执行配置</div>
+                </div>
+
+                <!-- 设备维度 -->
+                <h6><i class="bi bi-hdd-stack"></i> 设备维度</h6>
+                <div class="table-responsive mb-4" style="max-height:300px;overflow-y:auto">
+                    <table class="table table-dark table-sm">
+                        <thead>
+                            <tr>
+                                <th>IP</th>
+                                <th>端口</th>
+                                <th>状态</th>
+                                <th>总命令</th>
+                                <th>成功</th>
+                                <th>失败</th>
+                                <th>耗时(s)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportDeviceBody">
+                            <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 命令维度 -->
+                <h6><i class="bi bi-list-check"></i> 命令维度</h6>
+                <div class="table-responsive" style="max-height:300px;overflow-y:auto">
+                    <table class="table table-dark table-sm">
+                        <thead>
+                            <tr>
+                                <th>命令</th>
+                                <th>总尝试</th>
+                                <th>成功</th>
+                                <th>失败</th>
+                                <th>平均耗时(s)</th>
+                                <th>失败率(%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportCommandBody">
+                            <tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 失败详情 -->
+                <h6 class="mt-4"><i class="bi bi-exclamation-triangle"></i> 失败详情</h6>
+                <div id="reportFailures" class="border rounded p-2" style="max-height:200px;overflow-y:auto">
+                    <div class="text-muted small">暂无失败记录</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function loadReport() {
+    fetch('/api/execute/results').then(r=>r.json()).then(d => {
+        const report = d.report;
+        if (!report) {
+            document.getElementById('reportOverview').innerHTML = '<div class="text-muted py-4">尚无报表数据，请先执行配置</div>';
+            return;
+        }
+        renderReport(report);
+    });
+}
+
+function renderReport(report) {
+    const overview = report.总览 || {};
+    document.getElementById('reportOverview').innerHTML = `
+        <div class="col-4"><div class="border rounded p-2"><h4 class="text-info">${overview.总设备数 || 0}</h4><small>设备总数</small></div></div>
+        <div class="col-4"><div class="border rounded p-2"><h4 class="text-success">${overview.在线设备数 || 0}</h4><small>在线设备</small></div></div>
+        <div class="col-4"><div class="border rounded p-2"><h4 class="${(overview.成功率 || 0) >= 80 ? 'text-success' : 'text-warning'}">${overview.成功率 || 0}%</h4><small>成功率</small></div></div>
+        <div class="col-3 mt-2"><div class="border rounded p-2"><h5 class="text-primary">${overview.总命令数 || 0}</h5><small>总命令</small></div></div>
+        <div class="col-3 mt-2"><div class="border rounded p-2"><h5 class="text-success">${overview.成功数 || 0}</h5><small>成功</small></div></div>
+        <div class="col-3 mt-2"><div class="border rounded p-2"><h5 class="text-danger">${overview.失败数 || 0}</h5><small>失败</small></div></div>
+        <div class="col-3 mt-2"><div class="border rounded p-2"><h5>${overview['总耗时(秒)'] || 0}s</h5><small>总耗时</small></div></div>
+    `;
+
+    // 设备维度
+    const devBody = document.getElementById('reportDeviceBody');
+    const devices = report.设备维度 || [];
+    if (devices.length === 0) {
+        devBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>';
+    } else {
+        devBody.innerHTML = devices.map(d => `<tr>
+            <td>${d.IP || ''}</td>
+            <td>${d.端口 || ''}</td>
+            <td><span class="badge bg-${d.状态==='成功'?'success':d.状态==='在线'?'info':'danger'}">${d.状态||''}</span></td>
+            <td>${d.总命令||0}</td>
+            <td class="text-success">${d.成功||0}</td>
+            <td class="text-danger">${d.失败||0}</td>
+            <td>${(d['耗时(秒)']||0).toFixed(1)}</td>
+        </tr>`).join('');
+    }
+
+    // 命令维度
+    const cmdBody = document.getElementById('reportCommandBody');
+    const commands = report.命令维度 || [];
+    if (commands.length === 0) {
+        cmdBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>';
+    } else {
+        cmdBody.innerHTML = commands.map(c => `<tr>
+            <td><span class="badge bg-info">${c.命令||''}</span></td>
+            <td>${c.总尝试||0}</td>
+            <td class="text-success">${c.成功||0}</td>
+            <td class="text-danger">${c.失败||0}</td>
+            <td>${(c['平均耗时(秒)']||0).toFixed(2)}</td>
+            <td>${(c['失败率(%)']||0).toFixed(1)}%</td>
+        </tr>`).join('');
+    }
+
+    // 失败详情
+    const failuresEl = document.getElementById('reportFailures');
+    const failures = report.失败详情 || [];
+    if (failures.length === 0) {
+        failuresEl.innerHTML = '<div class="text-muted small">暂无失败记录</div>';
+    } else {
+        failuresEl.innerHTML = failures.map(f =>
+            `<div class="mb-1"><span class="badge bg-danger">${f.ip || ''}:${f.port || ''}</span> <small>${f.detail || ''}</small></div>`
+        ).join('');
+    }
+}
+
+function exportReport(fmt) {
+    window.open(`/api/reports/export?format=${fmt}`, '_blank');
+}
+
+loadReport();
+// 每5秒尝试刷新
+setInterval(loadReport, 5000);
+</script>
+{% endblock %}

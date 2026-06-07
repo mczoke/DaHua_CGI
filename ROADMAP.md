@@ -25,15 +25,17 @@
   - 完成异步执行器核心功能
   - 集成日志管理系统
   - 设备认证流程优化
-- [x] V9.6-alpha - 代码重构 (2026-06-01)
-  - 配置管理重构 (Task1)
-  - 异步执行器优化 (Task2)
-  - 异常处理&日志优化 (Task3)
-  - 全模块代码清理 (Task4)
-- [ ] V9.6-beta - 功能增强
-  - 支持更多 CGI 命令
-  - 性能优化
-  - 单元测试覆盖率提升至 80%
+- [x] V9.6-alpha - 代码重构 & 功能增强 (2026-06-05)
+  - 配置管理重构 (Task1 - Claw-CodeX)
+  - 异步执行器优化 (Task2 - Claw-Claude)
+  - 异常处理&日志优化 (Task3 - Claw-CodeX)
+  - 全模块代码清理 (Task4 - Claw-Claude)
+  - 覆盖率提升至 83% (Task5 - OpenClaw)
+  - API文档 + 集成测试 (Task6 - Claw-Claude + OpenClaw)
+  - 性能优化 (Task7 - Claw-Claude+CodeX)
+  - CGI命令扩展 (Task8 - Claw-Claude)
+  - 多设备并发 + 聚合报表 (Task9 - Claw-Claude)
+  - 测试全部通过: 322/322
 - [ ] V10.0 - 重大升级
   - 重构架构
   - 支持多设备并发
