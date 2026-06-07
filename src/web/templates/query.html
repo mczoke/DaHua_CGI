@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <!-- 左侧：设备选择列表 -->
+    <div class="col-md-3">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备列表</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="d-flex gap-1 mb-2">
+                    <button class="btn btn-outline-light btn-sm flex-fill" onclick="selectQueryDevices('all')">全选</button>
+                    <button class="btn btn-outline-light btn-sm flex-fill" onclick="selectQueryDevices('online')">选在线</button>
+                    <button class="btn btn-outline-light btn-sm flex-fill" onclick="selectQueryDevices('none')">清空</button>
+                </div>
+                <div id="queryDeviceList" style="max-height:450px;overflow-y:auto">
+                    <div class="text-center text-muted py-3">
+                        <small>未加载设备<br>请先在设备管理页面上传Excel</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：命令输入和结果 -->
+    <div class="col-md-9">
+        <!-- 命令输入区域 -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-terminal"></i> CGI查询命令</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label text-muted small">
+                        输入CGI查询命令名称，每行一个（如 Alarm、VideoInMode、VideoInChannel）
+                    </label>
+                    <textarea id="queryCommands" class="form-control font-monospace" rows="4" placeholder="Alarm&#10;VideoInMode&#10;VideoInChannel"></textarea>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-primary" onclick="executeQuery()"><i class="bi bi-play-fill"></i> 开始查询</button>
+                    <button class="btn btn-success" onclick="exportQueryResult()" id="btnExport" disabled><i class="bi bi-download"></i> 导出结果</button>
+                    <span id="queryStatus" class="text-muted small ms-2">就绪</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div id="queryProgress" class="mb-3" style="display:none">
+            <div class="d-flex justify-content-between mb-1">
+                <span id="queryProgressStatus">查询中...</span>
+                <span id="queryProgressPercent">0%</span>
+            </div>
+            <div class="progress" style="height:8px">
+                <div id="queryProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- 结果表格 -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-table"></i> 查询结果</h6>
+                <span id="resultCount" class="badge bg-secondary">0 行</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:550px;overflow-y:auto">
+                    <table class="table table-dark table-hover table-sm mb-0" id="queryResultTable">
+                        <thead>
+                            <tr id="queryResultHeader">
+                                <th colspan="10" class="text-center text-muted py-4">等待执行查询...</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queryResultBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let queryDevices = [];
+let queryResultData = [];
+let queryResultColumns = [];
+
+// 加载设备列表
+function loadQueryDevices() {
+    fetch('/api/devices')
+        .then(r => r.json())
+        .then(d => {
+            queryDevices = d.devices || [];
+            renderQueryDevices();
+        })
+        .catch(() => {});
+}
+
+function renderQueryDevices() {
+    const container = document.getElementById('queryDeviceList');
+    if (queryDevices.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-3"><small>未加载设备<br>请先在设备管理页面上传Excel</small></div>';
+        return;
+    }
+    let html = '';
+    queryDevices.forEach((dev, i) => {
+        const onlineIcon = dev.online
+            ? '<i class="bi bi-check-circle text-success"></i>'
+            : '<i class="bi bi-x-circle text-danger"></i>';
+        html += `<div class="form-check query-dev-item" style="padding:4px 8px;border-bottom:1px solid #333">
+            <input class="form-check-input query-dev-cb" type="checkbox" id="qdev_${i}" data-index="${i}" ${dev.selected ? 'checked' : ''}>
+            <label class="form-check-label small" for="qdev_${i}" style="cursor:pointer">
+                ${onlineIcon}
+                <span class="ms-1">${dev.ip}:${dev.port}</span>
+                <span class="text-muted ms-1">${dev.username}</span>
+            </label>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function selectQueryDevices(mode) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: mode})
+    }).then(r => r.json()).then(() => loadQueryDevices());
+}
+
+function getSelectedDeviceIndices() {
+    const cbs = document.querySelectorAll('.query-dev-cb:checked');
+    return Array.from(cbs).map(cb => parseInt(cb.dataset.index));
+}
+
+// 执行查询
+function executeQuery() {
+    const commandsText = document.getElementById('queryCommands').value.trim();
+    if (!commandsText) {
+        showToast('请输入查询命令', 'warning');
+        return;
+    }
+
+    const indices = getSelectedDeviceIndices();
+    if (indices.length === 0) {
+        showToast('请选择至少一台设备', 'warning');
+        return;
+    }
+
+    const commands = commandsText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+    if (commands.length === 0) {
+        showToast('请输入有效的查询命令', 'warning');
+        return;
+    }
+
+    // 显示进度
+    document.getElementById('queryProgress').style.display = 'block';
+    document.getElementById('queryProgressBar').style.width = '0%';
+    document.getElementById('queryProgressPercent').textContent = '0%';
+    document.getElementById('queryProgressStatus').textContent = `查询 ${indices.length} 台设备 × ${commands.length} 条命令...`;
+    document.getElementById('queryStatus').textContent = '查询中...';
+
+    fetch('/api/query/execute', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({devices: indices, commands: commands})
+    })
+    .then(r => r.json())
+    .then(resp => {
+        document.getElementById('queryProgress').style.display = 'none';
+        if (resp.error) {
+            showToast(resp.error, 'danger');
+            document.getElementById('queryStatus').textContent = '查询失败';
+            return;
+        }
+        queryResultData = resp.data || [];
+        queryResultColumns = resp.columns || [];
+        renderQueryResult();
+        document.getElementById('queryStatus').textContent = `完成 (${resp.count} 台设备)`;
+        document.getElementById('btnExport').disabled = false;
+        showToast(`查询完成: ${resp.count} 台设备`, 'success');
+    })
+    .catch(e => {
+        document.getElementById('queryProgress').style.display = 'none';
+        showToast('查询异常: ' + e, 'danger');
+        document.getElementById('queryStatus').textContent = '查询异常';
+    });
+}
+
+function renderQueryResult() {
+    const thead = document.getElementById('queryResultHeader');
+    const tbody = document.getElementById('queryResultBody');
+
+    if (!queryResultColumns || queryResultColumns.length === 0) {
+        thead.innerHTML = '<th colspan="10" class="text-center text-muted py-4">无结果数据</th>';
+        tbody.innerHTML = '';
+        document.getElementById('resultCount').textContent = '0 行';
+        return;
+    }
+
+    // 表头
+    let headerHtml = '<tr>';
+    queryResultColumns.forEach(col => {
+        headerHtml += `<th class="small">${col}</th>`;
+    });
+    headerHtml += '</tr>';
+    thead.innerHTML = headerHtml;
+
+    // 数据行
+    let bodyHtml = '';
+    queryResultData.forEach(row => {
+        bodyHtml += '<tr>';
+        queryResultColumns.forEach(col => {
+            const val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
+            bodyHtml += `<td class="small">${escapeHtml(val)}</td>`;
+        });
+        bodyHtml += '</tr>';
+    });
+    tbody.innerHTML = bodyHtml;
+
+    document.getElementById('resultCount').textContent = `${queryResultData.length} 行`;
+}
+
+function exportQueryResult() {
+    if (!queryResultData || queryResultData.length === 0) {
+        showToast('没有可导出的结果', 'warning');
+        return;
+    }
+    window.location.href = '/api/query/export';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(msg, type) {
+    const container = document.getElementById('toastContainer') || (()=>{
+        const c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.style.cssText = 'position:fixed;top:60px;right:20px;z-index:9999';
+        document.body.appendChild(c);
+        return c;
+    })();
+    const t = document.createElement('div');
+    t.className = `toast align-items-center text-bg-${type} border-0 show`;
+    t.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    container.appendChild(t);
+    setTimeout(()=>t.remove(), 4000);
+}
+
+// 每 3 秒刷新设备列表
+setInterval(loadQueryDevices, 3000);
+loadQueryDevices();
+</script>
+{% endblock %}

@@ -43,6 +43,7 @@ class _RealishFrame(_Realish):
         self.cget = MagicMock(return_value='SystemButtonFace')
         self.title = MagicMock()
         self.geometry = MagicMock()
+        self.set = MagicMock()
 
     def __getattr__(self, name):
         """Auto-create MagicMock for any tk attribute not explicitly defined."""
@@ -115,7 +116,7 @@ ttk.Scrollbar = MagicMock
 
 from utils.device_manager import DeviceInfo
 from utils.aggregate_collector import AggregateResultCollector, AggregateReport, DeviceResultSummary, CommandSummary
-from full_app import DeviceTableFrame, LogPanel, ConfigTab, DahuaConfigApp, AggregateReportTab
+from full_app import DeviceTableFrame, LogPanel, ConfigTab, DahuaConfigApp, AggregateReportTab, QueryTab
 
 
 # ============================================================================

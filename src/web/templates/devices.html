@@ -6,8 +6,10 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备管理</h5>
                 <div>
+                    <button class="btn btn-info btn-sm" onclick="window.location.href='/api/template/download'"><i class="bi bi-download"></i> 下载模板</button>
                     <button class="btn btn-success btn-sm" onclick="pingSelected()"><i class="bi bi-wifi"></i> Ping检测</button>
                     <button class="btn btn-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
+                    <small class="text-info ms-2">提示：请先下载模板填写设备信息</small>
                 </div>
             </div>
             <div class="card-body">

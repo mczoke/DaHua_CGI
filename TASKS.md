@@ -21,8 +21,7 @@
   - 启动：`python src/web/app.py`
 
 ## 待办
-- [ ] 推送到远程仓库（远程仓库已不存在）
-- [ ] 配置远程 Git 仓库
+- [x] GitHub 推送完成 ✅（仓库：mczoke/DaHua_CGI）
 
 ## 已完成
 - [x] Task1 - 配置管理重构 (Claw-CodeX)
