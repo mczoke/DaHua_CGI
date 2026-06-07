@@ -89,7 +89,7 @@ class DeviceLoader:
             self.log_manager.log_detailed(f"Excel文件读取完成，共{total_rows}行", "INFO")
             
             self.devices.clear()
-            column_mapping = self._analyze_columns(df, strict_mode=True)
+            column_mapping = self._analyze_columns(df)
             
             valid_rows = 0
             for idx, row in df.iterrows():
@@ -112,76 +112,30 @@ class DeviceLoader:
             self.log_manager.log_detailed(error_msg, "ERROR")
             raise
     
-    def _analyze_columns(self, df, strict_mode=False) -> dict:
-        """分析Excel列结构
-        
-        Args:
-            strict_mode: True=严格模式（要求列名完全匹配'IP地址','端口','用户名','密码'）
-                        False=回退到模糊匹配模式
-                        
-        Raises:
-            ValueError: 严格模式下未找到必需列时抛出
-        """
+    def _analyze_columns(self, df) -> dict:
+        """分析Excel列结构"""
         column_mapping = {}
         
-        # 必需列的标准名称（严格匹配）
-        required_columns = {
-            'ip': 'IP地址',
-            'port': '端口',
-            'username': '用户名',
-            'password': '密码',
+        column_patterns = {
+            'ip': ['IP地址', 'IP', 'ip', '地址', '摄像机IP', '设备IP', '摄像头IP'],
+            'port': ['端口', 'Port', 'port', '端口号', 'HTTP端口'],
+            'username': ['用户名', 'User', 'user', '登录名', '管理员'],
+            'password': ['密码', 'Password', 'password', '登录密码', 'pass']
         }
         
-        if strict_mode:
-            # 严格校验模式：列名必须 strip 后完全相等
-            for col_type, expected_name in required_columns.items():
-                found = False
+        for col_type, patterns in column_patterns.items():
+            found = False
+            for pattern in patterns:
                 for excel_col in df.columns:
-                    if str(excel_col).strip() == expected_name:
+                    if str(excel_col).strip().lower() == pattern.lower():
                         column_mapping[col_type] = excel_col
                         found = True
                         break
-                if not found:
-                    available_cols = [str(c).strip() for c in df.columns]
-                    raise ValueError(
-                        f"Excel缺少必需列 '{expected_name}'。当前列名: {available_cols}。"
-                        f"请使用标准导入模板（模板位于: src/templates/device_import_template.xlsx）"
-                    )
-        else:
-            # 模糊匹配模式（回退方案）
-            import warnings
-            import logging
-            warnings.warn(
-                "使用模糊匹配导入设备列（非严格模式），"
-                "建议使用标准导入模板: src/templates/device_import_template.xlsx",
-                UserWarning
-            )
-            # 通过 logging 打印 WARNING
-            logging.getLogger(__name__).warning(
-                "使用模糊匹配导入设备列（非严格模式），"
-                "建议使用标准导入模板: src/templates/device_import_template.xlsx"
-            )
+                if found:
+                    break
             
-            column_patterns = {
-                'ip': ['IP地址', 'IP', 'ip', '地址', '摄像机IP', '设备IP', '摄像头IP'],
-                'port': ['端口', 'Port', 'port', '端口号', 'HTTP端口'],
-                'username': ['用户名', 'User', 'user', '登录名', '管理员'],
-                'password': ['密码', 'Password', 'password', '登录密码', 'pass']
-            }
-            
-            for col_type, patterns in column_patterns.items():
-                found = False
-                for pattern in patterns:
-                    for excel_col in df.columns:
-                        if str(excel_col).strip().lower() == pattern.lower():
-                            column_mapping[col_type] = excel_col
-                            found = True
-                            break
-                    if found:
-                        break
-                
-                if not found and col_type in df.columns:
-                    column_mapping[col_type] = col_type
+            if not found and col_type in df.columns:
+                column_mapping[col_type] = col_type
         
         return column_mapping
     

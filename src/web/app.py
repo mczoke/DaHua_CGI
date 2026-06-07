@@ -27,7 +27,6 @@ from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
 from utils.device_manager import DeviceLoader, DeviceDetector, ConfigExecutor
 from utils.aggregate_collector import AggregateResultCollector
-from utils.cgi_query import CgiQueryExecutor
 
 # ============================================================================
 # 应用初始化
@@ -42,7 +41,6 @@ _log_manager = LogManager(log_level=_config.get("log_level", "INFO"))
 _device_loader = DeviceLoader(_log_manager)
 _detector: Optional[DeviceDetector] = None
 _executor: Optional[ConfigExecutor] = None
-_query_executor: Optional[CgiQueryExecutor] = None
 _executor_thread: Optional[threading.Thread] = None
 _executor_start_time: Optional[datetime] = None
 _executor_results: List[dict] = []
@@ -52,8 +50,6 @@ _execution_completed = False
 _progress_data: Dict = {"percent": 0, "message": "", "stats": {}}
 _log_buffer: List[Dict] = []
 _selected_commands: List[str] = []
-_query_result_data: List[dict] = []
-_query_result_columns: List[str] = []
 
 
 def _web_log_callback(message: str, level: str = "INFO") -> None:
@@ -121,25 +117,6 @@ def page_reports():
 @app.route("/logs")
 def page_logs():
     return render_template("logs.html")
-
-
-@app.route("/api/template/download")
-def api_template_download():
-    """下载设备导入模板"""
-    template_path = os.path.join(os.path.dirname(_project_root), "src", "templates", "device_import_template.xlsx")
-    if not os.path.exists(template_path):
-        return jsonify({"error": "模板文件不存在"}), 404
-    return send_file(
-        template_path,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name="device_import_template.xlsx",
-    )
-
-
-@app.route("/query")
-def page_query():
-    return render_template("query.html")
 
 
 # ============================================================================
@@ -548,99 +525,6 @@ def api_export_report():
             mimetype="text/plain; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=report.txt"},
         )
-
-
-# ============================================================================
-# 路由 — CGI 查询
-# ============================================================================
-
-
-@app.route("/api/query/execute", methods=["POST"])
-def api_query_execute():
-    """执行CGI查询"""
-    global _query_executor, _query_result_data, _query_result_columns
-
-    if not _device_loader.devices:
-        return jsonify({"error": "没有设备，请先上传 Excel"}), 400
-
-    data = request.json or {}
-    device_indices = data.get("devices", [])
-    commands = data.get("commands", [])
-
-    if not commands:
-        return jsonify({"error": "请至少输入一条查询命令"}), 400
-
-    # 确定设备列表
-    if device_indices:
-        devices = [d for i, d in enumerate(_device_loader.devices) if i in device_indices]
-    else:
-        # 默认使用所有选中的设备
-        devices = [d for d in _device_loader.devices if d.selected]
-
-    if not devices:
-        return jsonify({"error": "没有选中的设备，请先选择设备"}), 400
-
-    _web_log_callback(f"开始CGI查询: {len(devices)} 台设备 × {len(commands)} 条命令", "INFO")
-
-    # 初始化查询执行器
-    if _query_executor is None:
-        _query_executor = CgiQueryExecutor(
-            _config, _log_manager, log_callback=_web_log_callback
-        )
-
-    try:
-        df = _query_executor.execute_query(
-            devices=devices,
-            query_commands=commands,
-        )
-        # 保存结果到全局变量
-        _query_result_columns = list(df.columns)
-        _query_result_data = df.to_dict(orient="records")
-
-        _web_log_callback(f"CGI查询完成: {len(devices)} 台设备", "INFO")
-
-        return jsonify({
-            "success": True,
-            "data": _query_result_data,
-            "columns": _query_result_columns,
-            "count": len(_query_result_data),
-        })
-    except Exception as e:
-        _web_log_callback(f"CGI查询失败: {str(e)}", "ERROR")
-        return jsonify({"error": f"查询失败: {str(e)}"}), 500
-
-
-@app.route("/api/query/export")
-def api_query_export():
-    """导出查询结果到Excel"""
-    global _query_result_data, _query_result_columns
-
-    if not _query_result_data or not _query_result_columns:
-        return jsonify({"error": "没有查询结果，请先执行查询"}), 400
-
-    # 构建DataFrame
-    df = pd.DataFrame(_query_result_data, columns=_query_result_columns)
-
-    # 导出到临时文件
-    export_dir = os.path.join(_project_root, "src", "web", "uploads")
-    os.makedirs(export_dir, exist_ok=True)
-    export_path = os.path.join(export_dir, f"cgi_query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-
-    try:
-        if _query_executor is None:
-            _query_executor = CgiQueryExecutor(
-                _config, _log_manager, log_callback=_web_log_callback
-            )
-        actual_path = _query_executor.export_to_excel(df, export_path)
-
-        return send_file(
-            actual_path,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=os.path.basename(actual_path),
-        )
-    except Exception as e:
-        return jsonify({"error": f"导出失败: {str(e)}"}), 500
 
 
 # ============================================================================
