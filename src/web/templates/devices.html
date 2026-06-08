@@ -7,6 +7,7 @@
                 <h5 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备管理</h5>
                 <div>
                     <button class="btn btn-success btn-sm" onclick="pingSelected()"><i class="bi bi-wifi"></i> Ping检测</button>
+                    <a href="/api/template/download" class="btn btn-info btn-sm"><i class="bi bi-download"></i> 下载模板</a>
                     <button class="btn btn-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
                 </div>
             </div>
@@ -75,6 +76,9 @@
                 <div class="mb-3">
                     <label for="excelFile" class="form-label">选择 Excel 文件（.xlsx / .xls）</label>
                     <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls">
+                </div>
+                <div class="alert alert-info">
+                    <small>提示：请先<a href="/api/template/download" class="alert-link">下载模板</a>填写设备信息</small>
                 </div>
                 <div class="alert alert-info">
                     <small>Excel 需包含列: IP地址 / IP, 端口(可选), 用户名(可选), 密码(可选)</small>

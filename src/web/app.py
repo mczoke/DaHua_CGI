@@ -27,6 +27,7 @@ from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
 from utils.device_manager import DeviceLoader, DeviceDetector, ConfigExecutor
 from utils.aggregate_collector import AggregateResultCollector
+from utils.cgi_query import CgiQueryExecutor
 
 # ============================================================================
 # 应用初始化
@@ -50,6 +51,11 @@ _execution_completed = False
 _progress_data: Dict = {"percent": 0, "message": "", "stats": {}}
 _log_buffer: List[Dict] = []
 _selected_commands: List[str] = []
+
+# CGI查询全局状态
+_query_executor: Optional[CgiQueryExecutor] = None
+_query_result_data: List[List[str]] = []
+_query_result_columns: List[str] = []
 
 
 def _web_log_callback(message: str, level: str = "INFO") -> None:
@@ -472,6 +478,103 @@ def api_clear_logs():
     global _log_buffer
     _log_buffer = []
     return jsonify({"success": True})
+
+
+# ============================================================================
+# 路由 — Excel模板下载
+# ============================================================================
+
+@app.route("/api/template/download")
+def api_template_download():
+    """下载Excel导入模板"""
+    template_path = os.path.join(_project_root, "templates", "device_import_template.xlsx")
+    if not os.path.exists(template_path):
+        return jsonify({"error": "模板文件不存在"}), 404
+    return send_file(
+        template_path,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="device_import_template.xlsx",
+    )
+
+
+# ============================================================================
+# 路由 — CGI查询
+# ============================================================================
+
+@app.route("/query")
+def page_query():
+    """CGI批量查询页面"""
+    return render_template("query.html")
+
+
+@app.route("/api/query/execute", methods=["POST"])
+def api_query_execute():
+    """执行CGI查询"""
+    global _query_executor, _query_result_data, _query_result_columns, _config
+
+    data = request.json or {}
+    device_indices = data.get("devices", [])
+    commands = data.get("commands", [])
+
+    if not commands:
+        return jsonify({"error": "请至少输入一个查询命令"}), 400
+
+    devices = _device_loader.devices
+    if device_indices:
+        devices = [devices[i] for i in device_indices if 0 <= i < len(devices)]
+    elif data.get("selected_only", True):
+        devices = [d for d in devices if d.selected]
+
+    if not devices:
+        return jsonify({"error": "没有可查询的设备"}), 400
+
+    _query_executor = CgiQueryExecutor(_config, _log_manager, log_callback=_web_log_callback)
+
+    try:
+        df = _query_executor.execute_query(devices, commands)
+        _query_result_columns = list(df.columns)
+        _query_result_data = []
+        for _, row in df.iterrows():
+            _query_result_data.append([str(row[col]) if pd.notna(row[col]) else "" for col in df.columns])
+        return jsonify({
+            "success": True,
+            "data": _query_result_data,
+            "columns": _query_result_columns,
+            "count": len(_query_result_data),
+        })
+    except Exception as e:
+        return jsonify({"error": f"查询失败: {str(e)}"}), 500
+
+
+@app.route("/api/query/export")
+def api_query_export():
+    """导出CGI查询结果为Excel文件"""
+    global _query_executor, _query_result_data, _query_result_columns
+
+    if not _query_result_data or not _query_result_columns:
+        return jsonify({"error": "没有查询结果，请先执行查询"}), 400
+
+    import tempfile
+    import pandas as pd
+
+    df = pd.DataFrame(_query_result_data, columns=_query_result_columns)
+    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    try:
+        if _query_executor is None:
+            _query_executor = CgiQueryExecutor(_config, _log_manager)
+        _query_executor.export_to_excel(df, tmp_path)
+        return send_file(
+            tmp_path,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"CGI查询结果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        )
+    except Exception as e:
+        return jsonify({"error": f"导出失败: {str(e)}"}), 500
 
 
 # ============================================================================

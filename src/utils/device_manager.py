@@ -89,7 +89,7 @@ class DeviceLoader:
             self.log_manager.log_detailed(f"Excel文件读取完成，共{total_rows}行", "INFO")
             
             self.devices.clear()
-            column_mapping = self._analyze_columns(df)
+            column_mapping = self._analyze_columns(df, strict_mode=True)
             
             valid_rows = 0
             for idx, row in df.iterrows():
@@ -112,8 +112,44 @@ class DeviceLoader:
             self.log_manager.log_detailed(error_msg, "ERROR")
             raise
     
-    def _analyze_columns(self, df) -> dict:
-        """分析Excel列结构"""
+    def _analyze_columns(self, df, strict_mode=False) -> dict:
+        """分析Excel列结构
+        
+        Args:
+            df: pandas DataFrame
+            strict_mode: 如果True，要求精确匹配表头IP地址|端口|用户名|密码，
+                         不匹配则抛ValueError。默认False保留模糊匹配，用于测试兼容。
+        
+        Returns:
+            dict: 列名映射
+        """
+        if strict_mode:
+            expected = ['IP地址', '端口', '用户名', '密码']
+            actual = [str(col).strip() for col in df.columns]
+            
+            # 检查是否为4列且精确匹配
+            if len(actual) < 4:
+                raise ValueError(
+                    f"模板列数不足，需要至少4列（IP地址 | 端口 | 用户名 | 密码），"
+                    f"当前{len(actual)}列: {actual}"
+                )
+            
+            # 取前4列检查
+            for i, exp in enumerate(expected):
+                if i < len(actual) and actual[i] != exp:
+                    raise ValueError(
+                        f"模板列名不匹配：第{i+1}列应为'{exp}'，"
+                        f"实际为'{actual[i]}'。请下载标准模板。"
+                    )
+            
+            return {
+                'ip': expected[0],
+                'port': expected[1],
+                'username': expected[2],
+                'password': expected[3],
+            }
+        
+        # 原始模糊匹配逻辑
         column_mapping = {}
         
         column_patterns = {

@@ -18,10 +18,13 @@ from datetime import datetime
 import time
 import json
 
+import pandas as pd
+
 from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
 from utils.device_manager import DeviceLoader, DeviceDetector, ConfigExecutor, DeviceInfo
 from utils.aggregate_collector import AggregateResultCollector, AggregateReport
+from utils.cgi_query import CgiQueryExecutor
 
 
 class DeviceTableFrame(ttk.Frame):
@@ -326,6 +329,7 @@ class DahuaConfigApp(tk.Tk):
         
         # 左侧按钮
         ttk.Button(btn_frame, text='加载 Excel', command=self.load_excel).pack(side=tk.LEFT, padx=4, pady=6)
+        ttk.Button(btn_frame, text='下载模板', command=self.download_template).pack(side=tk.LEFT, padx=4)
         ttk.Button(btn_frame, text='Ping 检测', command=self.start_detection).pack(side=tk.LEFT, padx=4)
         self.start_btn = ttk.Button(btn_frame, text='开始配置', command=self.start_configuration)
         self.start_btn.pack(side=tk.LEFT, padx=4)
@@ -372,9 +376,11 @@ class DahuaConfigApp(tk.Tk):
         self.nb.pack(fill=tk.BOTH, expand=True)
         self.config_tab = ConfigTab(self.nb, self.config_data, save_callback=self.save_config)
         self.log_panel = LogPanel(self.nb)
+        self.query_tab = QueryTab(self.nb, self)
         self.report_tab = AggregateReportTab(self.nb)
         self.nb.add(self.log_panel, text='运行日志')
         self.nb.add(self.config_tab, text='配置CGI')
+        self.nb.add(self.query_tab, text='CGI查询')
         self.nb.add(self.report_tab, text='聚合报表')
 
         
@@ -437,10 +443,39 @@ class DahuaConfigApp(tk.Tk):
                 # devices indices are normalized by loader
                 self.device_table.load_devices(devices)
                 self.log_message(f'已加载 {count} 台设备', 'SUCCESS')
+            except ValueError as e:
+                error_msg = str(e)
+                self.log_message(f'加载 Excel 失败: {error_msg}', 'ERROR')
+                # 严格校验失败时弹窗提示
+                self.after(0, lambda: messagebox.showerror('模板错误',
+                    f'{error_msg}\n\n请点击「下载模板」按钮获取标准模板'))
             except Exception as e:
                 self.log_message(f'加载 Excel 失败: {e}', 'ERROR')
 
         threading.Thread(target=_load, daemon=True).start()
+
+    def download_template(self):
+        """下载Excel导入模板"""
+        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'device_import_template.xlsx')
+        if not os.path.exists(template_path):
+            messagebox.showerror('错误', '模板文件不存在')
+            return
+        
+        fn = filedialog.asksaveasfilename(
+            title='保存模板',
+            defaultextension='.xlsx',
+            initialfile='device_import_template.xlsx',
+            filetypes=[('Excel 文件', '*.xlsx')]
+        )
+        if not fn:
+            return
+        
+        try:
+            import shutil
+            shutil.copy2(template_path, fn)
+            self.log_message(f'模板已保存到: {fn}', 'SUCCESS')
+        except Exception as e:
+            self.log_message(f'保存模板失败: {e}', 'ERROR')
 
     def start_detection(self):
         devices = self.device_table.devices
@@ -754,6 +789,183 @@ class DahuaConfigApp(tk.Tk):
             self.log_message(f'报表已导出到: {filename}', 'SUCCESS')
         except Exception as e:
             self.log_message(f'导出报表失败: {e}', 'ERROR')
+
+
+class QueryTab(ttk.Frame):
+    """CGI查询 Tab — 批量查询设备CGI命令并导出结果"""
+    def __init__(self, parent, app):
+        super().__init__(parent)
+        self.app = app
+        self.query_executor = None
+        self.query_results_df = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        # 命令输入区
+        cmd_frame = ttk.LabelFrame(self, text='CGI查询命令（每行一个）')
+        cmd_frame.pack(fill=tk.BOTH, expand=False, padx=5, pady=5)
+
+        self.cmd_text = scrolledtext.ScrolledText(cmd_frame, height=8, font=('Consolas', 9))
+        self.cmd_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.cmd_text.insert(tk.END, '# 纯命令名模式（自动拼接标准CGI URL）\n')
+        self.cmd_text.insert(tk.END, 'Alarm\n')
+        self.cmd_text.insert(tk.END, 'VideoInMode\n')
+        self.cmd_text.insert(tk.END, 'VideoInChannel\n')
+        self.cmd_text.insert(tk.END, '# 自定义URL模式（支持{{IP}}变量替换）\n')
+        self.cmd_text.insert(tk.END, 'http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=RecordMode\n')
+
+        # 按钮区
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.query_btn = ttk.Button(btn_frame, text='开始查询', command=self.start_query)
+        self.query_btn.pack(side=tk.LEFT, padx=4)
+
+        self.export_btn = ttk.Button(btn_frame, text='导出结果', command=self.export_results, state=tk.DISABLED)
+        self.export_btn.pack(side=tk.LEFT, padx=4)
+
+        # 进度条
+        self.query_progress = ttk.Progressbar(btn_frame, orient=tk.HORIZONTAL, length=300, mode='determinate')
+        self.query_progress.pack(side=tk.LEFT, padx=20, fill=tk.X, expand=True)
+
+        self.progress_label = ttk.Label(btn_frame, text='0%')
+        self.progress_label.pack(side=tk.LEFT, padx=4)
+
+        # 结果表格
+        result_frame = ttk.LabelFrame(self, text='查询结果')
+        result_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 创建容器Frame支持横向滚动
+        table_container = ttk.Frame(result_frame)
+        table_container.pack(fill=tk.BOTH, expand=True)
+
+        # Treeview + 横向滚动（使用pack布局避免测试mock的grid兼容问题）
+        self.result_tree = ttk.Treeview(table_container, show='headings', height=15)
+        vsb = ttk.Scrollbar(table_container, orient=tk.VERTICAL, command=self.result_tree.yview)
+        hsb = ttk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=self.result_tree.xview)
+        try:
+            self.result_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        except Exception:
+            pass
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self.result_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.result_tree.insert('', tk.END, values=('查询结果将在此显示',))
+
+    def get_devices(self):
+        """获取当前设备列表"""
+        return self.app.device_table.devices if self.app and hasattr(self.app, 'device_table') else []
+
+    def start_query(self):
+        """开始CGI查询"""
+        devices = self.get_devices()
+        if not devices:
+            messagebox.showwarning('提示', '请先加载设备列表')
+            return
+
+        # 读取命令
+        raw_text = self.cmd_text.get('1.0', tk.END).strip()
+        commands = []
+        for line in raw_text.split('\n'):
+            line = line.strip()
+            if line and not line.startswith('#'):
+                commands.append(line)
+
+        if not commands:
+            messagebox.showwarning('提示', '请输入CGI查询命令')
+            return
+
+        self.query_btn.config(state=tk.DISABLED)
+        self.export_btn.config(state=tk.DISABLED)
+        self.query_progress['value'] = 0
+        self.progress_label.config(text='0%')
+
+        def progress_cb(progress):
+            self.after(0, lambda: self._update_progress(progress))
+
+        def _run():
+            try:
+                self.query_executor = CgiQueryExecutor(
+                    self.app.config_data,
+                    self.app.log_manager,
+                    log_callback=self.app.log_message
+                )
+                df = self.query_executor.execute_query(
+                    devices, commands,
+                    progress_callback=progress_cb,
+                )
+                self.query_results_df = df
+                self.after(0, self._show_results)
+            except Exception as e:
+                self.after(0, lambda: self.app.log_message(f'查询失败: {e}', 'ERROR'))
+                self.after(0, lambda: self.query_btn.config(state=tk.NORMAL))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _update_progress(self, progress):
+        self.query_progress['value'] = progress
+        self.progress_label.config(text=f'{progress:.1f}%')
+
+    def _show_results(self):
+        """在主线程更新结果表格"""
+        df = self.query_results_df
+        if df is None or df.empty:
+            self.app.log_message('查询结果为空', 'WARNING')
+            self.query_btn.config(state=tk.NORMAL)
+            return
+
+        # 清空旧数据
+        for item in self.result_tree.get_children():
+            self.result_tree.delete(item)
+
+        # 设置列
+        columns = list(df.columns)
+        self.result_tree['columns'] = columns
+        for col in columns:
+            self.result_tree.heading(col, text=col)
+            self.result_tree.column(col, width=120, minwidth=80)
+            if col in ('Ping状态', '账号验证'):
+                self.result_tree.column(col, width=100)
+
+        # 插入数据
+        for _, row in df.iterrows():
+            values = [str(row[col]) if pd.notna(row[col]) else '' for col in columns]
+            self.result_tree.insert('', tk.END, values=values)
+
+        self.query_progress['value'] = 100
+        self.progress_label.config(text='100%')
+        self.query_btn.config(state=tk.NORMAL)
+        self.export_btn.config(state=tk.NORMAL)
+        self.app.log_message(f'查询完成: {len(df)} 台设备', 'SUCCESS')
+
+    def export_results(self):
+        """导出查询结果为Excel"""
+        if self.query_results_df is None or self.query_results_df.empty:
+            messagebox.showwarning('提示', '没有查询结果可导出')
+            return
+
+        default_name = f'CGI查询结果_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        fn = filedialog.asksaveasfilename(
+            title='导出查询结果',
+            defaultextension='.xlsx',
+            initialfile=default_name,
+            filetypes=[('Excel 文件', '*.xlsx'), ('CSV 文件', '*.csv')]
+        )
+        if not fn:
+            return
+
+        try:
+            if self.query_executor is None:
+                self.query_executor = CgiQueryExecutor(
+                    self.app.config_data,
+                    self.app.log_manager,
+                    log_callback=self.app.log_message
+                )
+            saved = self.query_executor.export_to_excel(self.query_results_df, fn)
+            self.app.log_message(f'结果已导出到: {saved}', 'SUCCESS')
+        except Exception as e:
+            self.app.log_message(f'导出失败: {e}', 'ERROR')
 
 
 if __name__ == '__main__':
