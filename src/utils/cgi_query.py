@@ -275,7 +275,7 @@ class CgiQueryExecutor:
 
         # 列集合（基础列 + 命令列 + 展开列，动态构建）
         all_columns_set = set(base_columns)
-        _seen_command_cols = base_columns.copy()  # 保留有序的基础列
+        _seen_command_cols = base_columns.copy()
 
         # 准备结果列表
         results = []
@@ -323,6 +323,7 @@ class CgiQueryExecutor:
                         row_data[expanded_col] = v
                         if expanded_col not in all_columns_set:
                             all_columns_set.add(expanded_col)
+                            _seen_command_cols.append(expanded_col)
 
             results.append(row_data)
 
@@ -332,7 +333,7 @@ class CgiQueryExecutor:
                 progress_callback(progress)
 
         # 组装 DataFrame（用 _seen_command_cols 保持列顺序）
-        final_columns = base_columns + [c for c in _seen_command_cols if c not in base_columns]
+        final_columns = _seen_command_cols
         df = pd.DataFrame(results, columns=final_columns)
         # 用 NaN 填充缺失列
         for col in final_columns:
