@@ -600,7 +600,7 @@ class ConfigExecutor:
             self._device_processing.clear()
 
     def execute_batch(self, devices, mode="standard", exec_strategy="device_first", 
-                     progress_callback=None, stop_callback=None, total_tasks=None) -> dict:
+                     progress_callback=None, stop_callback=None, total_tasks=None) -> list:
         """批量执行配置 - 严格跳过离线设备"""
         # 重置停止标志
         self._stop_flag.clear()
@@ -697,7 +697,7 @@ class ConfigExecutor:
             self._futures = []
             self._cleanup_device_processing()
 
-    def _execute_by_device_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
+    def _execute_by_device_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> list:
         """严格版：按设备执行，只处理在线设备"""
         results = []
         total_devices = len(devices)
@@ -971,7 +971,7 @@ class ConfigExecutor:
                 'total_time': (datetime.now() - start_time).total_seconds()
             }
 
-    def _execute_by_command_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
+    def _execute_by_command_strict(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> list:
         """严格版：按命令执行，只处理在线设备"""
         # 创建线程池
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.config_concurrent)
@@ -1357,7 +1357,7 @@ class ConfigExecutor:
             self._log(f"设备 {device.ip} {error_msg}", "ERROR")
             return False, error_msg
 
-    async def _async_execute_by_device(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
+    async def _async_execute_by_device(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> list:
         """异步版的设备优先执行逻辑，在 AsyncIOManager 的事件循环中执行。"""
         results = []
         total_devices = len(devices)
@@ -1417,7 +1417,7 @@ class ConfigExecutor:
         return results
 
 
-    async def _async_execute_by_command(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> dict:
+    async def _async_execute_by_command(self, devices, mode="standard", progress_callback=None, stop_callback=None) -> list:
         """
         异步版命令优先策略 V2 — 全并发加速
 

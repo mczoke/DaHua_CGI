@@ -607,6 +607,7 @@ class AsyncIOManager:
                 future = pool.submit(asyncio.run, async_send())
                 return future.result(timeout=self.timeout)
         except RuntimeError:
+            # 事件循环在关闭状态时无法启动新协程，属于正常行为
             pass
 
         return asyncio.run(async_send())

@@ -1,5 +1,15 @@
 # 变更日志
 
+## [V9.7-alpha] - 2026-07-10
+### 代码质量修复 — 异常处理规范化 + 类型注解修正 (Codex CLI ✅)
+- **类型注解修正**：`device_manager.py` 中 5 个函数的返回类型 `-> dict` → `-> list`（`execute_batch`、`_execute_by_device_strict`、`_execute_by_command_strict`、`_async_execute_by_device`、`_async_execute_by_command`）
+- **异常处理规范化**：
+  - `cgi_query.py`：消除 3 处 `except Exception: pass`，替换为错误日志记录
+  - `full_app.py`：消除 5 处 `except Exception: pass`，配置解析失败时输出警告
+  - `async_executor.py`：添加 RuntimeError 静默吞并的注释说明
+- 全量文件语法检查通过 ✅
+
+
 ## [V9.6-alpha] - 2026-06-07
 ### GUI 升级 — 聚合报表 Tab + 导出报表 (Claw-Claude ✅)
 - 标题版本号 V9.5 → V9.6-alpha
