@@ -9,6 +9,7 @@ CGI查询执行器 - V1.0
 import os
 import re
 import json
+import re
 import threading
 import concurrent.futures
 from datetime import datetime
@@ -120,7 +121,7 @@ class CgiQueryExecutor:
         返回: '通过', '失败', '未验证'
         """
         try:
-            url = f"http://{ip}:{port}/cgi-bin/configManager.cgi?action=getConfig&name=Alarm"
+            url = f"http://{ip}:{port}/cgi-bin/configManager.cgi?action=getConfig&name=General"
             auth = self._get_auth(username, password)
             resp = self.session.get(
                 url,
@@ -180,27 +181,23 @@ class CgiQueryExecutor:
             )
 
             if resp.status_code != 200:
-                return f"HTTP {resp.status_code}"
+                return {"text": "", "parsed": {}}
 
             text = resp.text.strip()
             if not text:
-                return "(空响应)"
+                return {"text": "(空响应)", "parsed": {}}
 
             # 尝试解析 XML
             if text.startswith("<?xml") or text.startswith("<"):
                 try:
                     import xml.etree.ElementTree as ET
                     root = ET.fromstring(text)
-                    # 提取所有非空文本内容
                     texts = []
                     for elem in root.iter():
                         if elem.text and elem.text.strip():
                             texts.append(f"{elem.tag}: {elem.text.strip()}")
                     if texts:
-                        result = "; ".join(texts)
-                        if len(result) > 200:
-                            result = result[:200] + "..."
-                        return result
+                        return {"text": "; ".join(texts), "parsed": {}}
                 except Exception:
                     pass
 
@@ -208,24 +205,34 @@ class CgiQueryExecutor:
             if text.startswith("{") or text.startswith("["):
                 try:
                     parsed = json.loads(text)
-                    formatted = json.dumps(parsed, ensure_ascii=False, indent=2)
-                    if len(formatted) > 200:
-                        formatted = formatted[:200] + "..."
-                    return formatted
+                    return {"text": json.dumps(parsed, ensure_ascii=False, indent=2), "parsed": {}}
                 except Exception:
                     pass
 
-            # 普通文本，截断前200字符
-            if len(text) > 200:
-                text = text[:200] + "..."
-            return text
+            # 识别 key=value 格式（每行一个，如 table.xxx=yyy）
+            parsed_dict = {}
+            lines = text.split("\n")
+            if len(lines) > 1 and all("=" in line for line in lines if line.strip()):
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if "=" in line:
+                        key, _, val = line.partition("=")
+                        # 去掉 table.xxx 前缀，只取最后一部分作为列名
+                        simple_key = key.rsplit(".", 1)[-1] if "." in key else key
+                        parsed_dict[simple_key.strip()] = val.strip()
+                return {"text": "", "parsed": parsed_dict}
+
+            # 普通文本，返回完整内容
+            return {"text": text, "parsed": {}}
 
         except requests.exceptions.ConnectTimeout:
-            return "超时"
+            return {"text": "超时", "parsed": {}}
         except requests.exceptions.ConnectionError:
-            return "连接失败"
+            return {"text": "连接失败", "parsed": {}}
         except Exception as e:
-            return f"错误: {str(e)}"
+            return {"text": f"错误: {str(e)}", "parsed": {}}
 
     def execute_query(
         self,
@@ -266,7 +273,9 @@ class CgiQueryExecutor:
                 suffix += 1
             query_column_names.append(col_name)
 
-        all_columns = base_columns + query_column_names
+        # 列集合（基础列 + 命令列 + 展开列，动态构建）
+        all_columns_set = set(base_columns)
+        _seen_command_cols = base_columns.copy()  # 保留有序的基础列
 
         # 准备结果列表
         results = []
@@ -300,10 +309,20 @@ class CgiQueryExecutor:
 
             # 3. 逐条发送查询命令
             for cmd, col_name in zip(query_commands, query_column_names):
-                cmd_result = self._send_query_command(
+                result = self._send_query_command(
                     device.ip, device.port, device.username, device.password, cmd
                 )
-                row_data[col_name] = cmd_result
+                row_data[col_name] = result.get("text", "")
+                if col_name not in all_columns_set:
+                    all_columns_set.add(col_name)
+                    _seen_command_cols.append(col_name)
+                # 展开解析后的 key=value 到列（带命令名前缀）
+                if result.get("parsed"):
+                    for k, v in result["parsed"].items():
+                        expanded_col = f"{col_name}.{k}"
+                        row_data[expanded_col] = v
+                        if expanded_col not in all_columns_set:
+                            all_columns_set.add(expanded_col)
 
             results.append(row_data)
 
@@ -312,9 +331,14 @@ class CgiQueryExecutor:
                 progress = ((idx + 1) / total) * 100
                 progress_callback(progress)
 
-        # 组装 DataFrame
-        df = pd.DataFrame(results, columns=all_columns)
-        return df
+        # 组装 DataFrame（用 _seen_command_cols 保持列顺序）
+        final_columns = base_columns + [c for c in _seen_command_cols if c not in base_columns]
+        df = pd.DataFrame(results, columns=final_columns)
+        # 用 NaN 填充缺失列
+        for col in final_columns:
+            if col not in df.columns:
+                df[col] = ""
+        return df[final_columns]
 
     def export_to_excel(self, df: pd.DataFrame, filename: str) -> str:
         """
