@@ -71,8 +71,8 @@ class CgiQueryExecutor:
         if self.log_callback:
             try:
                 self.log_callback(message, level)
-            except Exception as e:
-                self.log_manager.log_detailed(f"日志回调异常: {e}", "ERROR") if self.log_manager else None
+            except Exception:
+                pass
         if self.log_manager:
             self.log_manager.log_detailed(message, level)
 
@@ -201,8 +201,8 @@ class CgiQueryExecutor:
                         if len(result) > 200:
                             result = result[:200] + "..."
                         return result
-                except Exception as e:
-                    self.log_manager.log_detailed(f"查询结果处理异常: {e}", "ERROR") if self.log_manager else None
+                except Exception:
+                    pass
 
             # 尝试解析 JSON
             if text.startswith("{") or text.startswith("["):
@@ -212,8 +212,8 @@ class CgiQueryExecutor:
                     if len(formatted) > 200:
                         formatted = formatted[:200] + "..."
                     return formatted
-                except Exception as e:
-                    self.log_manager.log_detailed(f"查询结果格式化异常: {e}", "ERROR") if self.log_manager else None
+                except Exception:
+                    pass
 
             # 普通文本，截断前200字符
             if len(text) > 200:

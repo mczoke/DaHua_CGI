@@ -255,19 +255,19 @@ class ConfigTab(ttk.Frame):
         try:
             self.config['timeout'] = int(self.timeout_var.get())
         except Exception:
-            self.log_message('超时设置无效，使用默认值', 'WARNING')
+            pass
         try:
             self.config['config_concurrent'] = int(self.concurrent_var.get())
         except Exception:
-            self.log_message('并发数设置无效，使用默认值', 'WARNING')
+            pass
         try:
             self.config['ping_timeout'] = int(self.ping_timeout_var.get())
         except Exception:
-            self.log_message('Ping超时设置无效，使用默认值', 'WARNING')
+            pass
         try:
             self.config['ping_concurrent'] = int(self.ping_concurrent_var.get())
         except Exception:
-            self.log_message('Ping并发数设置无效，使用默认值', 'WARNING')
+            pass
             
         self.config['auth_method'] = self.auth_method_var.get()
         self.config['exec_strategy'] = self.exec_strategy_var.get()
@@ -845,8 +845,8 @@ class QueryTab(ttk.Frame):
         hsb = ttk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=self.result_tree.xview)
         try:
             self.result_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        except Exception as e:
-            print(f"配置结果树滚动条失败: {e}")
+        except Exception:
+            pass
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self.result_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
