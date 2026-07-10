@@ -19,7 +19,7 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file, Response
 
 # 将项目根目录加入 sys.path 以便导入 src/utils/
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
@@ -205,6 +205,21 @@ def api_select_devices():
         idx = data.get("index")
         if idx is not None and 0 <= idx < len(devices):
             devices[idx].selected = not devices[idx].selected
+    return jsonify({"success": True})
+
+
+@app.route("/api/devices/clear", methods=["POST"])
+def api_clear_devices():
+    """清空所有已上传设备"""
+    global _execution_completed, _execution_running, _executor_results, _aggregate_report, _progress_data
+    _device_loader.devices.clear()
+    _device_loader.excel_source_file = ""
+    _device_loader.loaded_time = None
+    _execution_completed = False
+    _execution_running = False
+    _executor_results = []
+    _aggregate_report = None
+    _progress_data = {"percent": 0, "message": "", "stats": {}}
     return jsonify({"success": True})
 
 
