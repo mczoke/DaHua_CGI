@@ -10,6 +10,7 @@
                     <a href="/api/template/download" class="btn btn-info btn-sm"><i class="bi bi-download"></i> 下载模板</a>
                     <button class="btn btn-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
                     <button class="btn btn-danger btn-sm" onclick="clearDevices()"><i class="bi bi-trash"></i> 清空设备</button>
+                    <button class="btn btn-warning btn-sm" onclick="deleteSelected()"><i class="bi bi-x-lg"></i> 删除选中</button>
                 </div>
             </div>
             <div class="card-body">
@@ -177,6 +178,31 @@ function clearDevices() {
             }
         })
         .catch(e => showToast('清空失败: ' + e, 'danger'));
+}
+
+function deleteSelected() {
+    const selected = deviceList.filter(d => d.selected);
+    if (selected.length === 0) {
+        showToast('没有选中的设备', 'warning');
+        return;
+    }
+    if (!confirm('确定删除选中的 ' + selected.length + ' 台设备？')) return;
+    const indices = selected.map(d => d.index);
+    fetch('/api/devices/delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({indices: indices})
+    })
+        .then(r=>r.json())
+        .then(d => {
+            if (d.success) {
+                showToast('已删除 ' + d.deleted + ' 台设备', 'success');
+                refreshDevices();
+            } else {
+                showToast('删除失败: ' + (d.error || '未知错误'), 'danger');
+            }
+        })
+        .catch(e => showToast('删除失败: ' + e, 'danger'));
 }
 
 function selectMode(mode) {

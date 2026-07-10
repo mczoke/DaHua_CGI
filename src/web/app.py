@@ -19,10 +19,11 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file, Response
 
 # 将项目根目录加入 sys.path 以便导入 src/utils/
-_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_src_path = os.path.join(_project_root, "src")
-if _src_path not in sys.path:
-    sys.path.insert(0, _src_path)
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.join(_app_dir, "..", "..")
+_src_dir = os.path.join(_app_dir, "..")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
@@ -165,7 +166,7 @@ def api_upload_devices():
         return jsonify({"error": "文件名为空"}), 400
 
     # 保存上传文件
-    upload_dir = os.path.join(_project_root, "src", "web", "uploads")
+    upload_dir = os.path.join(_app_dir, "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     filepath = os.path.join(upload_dir, file.filename)
     file.save(filepath)
@@ -222,6 +223,29 @@ def api_clear_devices():
     _aggregate_report = None
     _progress_data = {"percent": 0, "message": "", "stats": {}}
     return jsonify({"success": True})
+
+
+@app.route("/api/devices/delete", methods=["POST"])
+def api_delete_devices():
+    """删除选中的设备"""
+    data = request.json or {}
+    indices = data.get("indices", [])
+    if not indices:
+        return jsonify({"error": "未指定要删除的设备"}), 400
+    
+    devices = _device_loader.devices
+    # 从大到小排序，避免删除后索引偏移
+    deleted = 0
+    for idx in sorted(indices, reverse=True):
+        if 0 <= idx < len(devices):
+            devices.pop(idx)
+            deleted += 1
+    
+    # 重新整理 index
+    for i, d in enumerate(devices):
+        d.index = i
+    
+    return jsonify({"success": True, "deleted": deleted})
 
 
 @app.route("/api/devices/ping", methods=["POST"])
@@ -503,7 +527,7 @@ def api_clear_logs():
 @app.route("/api/template/download")
 def api_template_download():
     """下载Excel导入模板"""
-    template_path = os.path.join(_project_root, "src", "templates", "device_import_template.xlsx")
+    template_path = os.path.join(_src_dir, "templates", "device_import_template.xlsx")
     if not os.path.exists(template_path):
         return jsonify({"error": "模板文件不存在"}), 404
     return send_file(
