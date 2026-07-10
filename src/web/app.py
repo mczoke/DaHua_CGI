@@ -20,8 +20,9 @@ from flask import Flask, jsonify, render_template, request, send_file, Response
 
 # 将项目根目录加入 sys.path 以便导入 src/utils/
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+_src_path = os.path.join(_project_root, "src")
+if _src_path not in sys.path:
+    sys.path.insert(0, _src_path)
 
 from utils.config_manager import ConfigManager
 from utils.log_manager import LogManager
