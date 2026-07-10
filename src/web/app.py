@@ -487,7 +487,7 @@ def api_clear_logs():
 @app.route("/api/template/download")
 def api_template_download():
     """下载Excel导入模板"""
-    template_path = os.path.join(_project_root, "templates", "device_import_template.xlsx")
+    template_path = os.path.join(_project_root, "src", "templates", "device_import_template.xlsx")
     if not os.path.exists(template_path):
         return jsonify({"error": "模板文件不存在"}), 404
     return send_file(

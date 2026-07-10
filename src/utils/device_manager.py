@@ -80,7 +80,7 @@ class DeviceLoader:
             self.loaded_time = datetime.now()
             
             # 读取Excel
-            df = pd.read_excel(file_path, dtype=str)
+            df = pd.read_excel(file_path, dtype=str, sheet_name='设备导入')
             total_rows = len(df)
             
             if total_rows == 0:
