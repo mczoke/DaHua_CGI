@@ -92,9 +92,18 @@ class DeviceLoader:
             column_mapping = self._analyze_columns(df, strict_mode=True)
             
             valid_rows = 0
+            seen_ips = set()
+            duplicate_ips = []
             for idx, row in df.iterrows():
                 device = self._parse_row(idx, row, column_mapping, mode)
                 if device:
+                    # 重复IP检测
+                    if device.ip in seen_ips:
+                        msg = "第" + str(idx + 2) + "行设备IP重复: " + device.ip + "，已跳过"
+                        self.log_manager.log_detailed(msg, "WARNING")
+                        duplicate_ips.append(device.ip)
+                        continue
+                    seen_ips.add(device.ip)
                     # 将设备index规范为在解析后列表中的顺序索引，
                     # 保证 DeviceInfo.index 与 self.devices 的下标一致，
                     # 以便UI和进度回调可以使用 device.index 安全定位主列表中的设备。
@@ -102,6 +111,12 @@ class DeviceLoader:
                     device.index = len(self.devices)
                     self.devices.append(device)
                     valid_rows += 1
+
+            if duplicate_ips:
+                unique_dup = sorted(set(duplicate_ips))
+                ips_str = ", ".join(unique_dup)
+                msg = "检测到 " + str(len(unique_dup)) + " 个重复IP地址: " + ips_str + "，已自动跳过重复行"
+                self.log_manager.log_detailed(msg, "WARNING")
             
             self.log_manager.log_detailed(f"成功解析 {valid_rows} 台有效设备", "INFO")
             
@@ -176,37 +191,72 @@ class DeviceLoader:
         return column_mapping
     
     def _parse_row(self, idx, row, column_mapping, mode) -> Optional[object]: # type: ignore[return]
-        """解析单行数据"""
+        """解析单行数据
+
+        校验规则:
+        - IP地址必须为有效IPv4格式 (x.x.x.x)
+        - 端口号必须在 1-65535 范围内
+        - 密码不能为空（记录警告但不跳过行）
+        """
         try:
             ip_col = column_mapping.get('ip')
             port_col = column_mapping.get('port')
             user_col = column_mapping.get('username')
             pass_col = column_mapping.get('password')
-            
+
             ip = str(row[ip_col]).strip() if ip_col and pd.notna(row.get(ip_col, '')) else ""
             port = str(row[port_col]).strip() if port_col and pd.notna(row.get(port_col, '')) else "80"
             username = str(row[user_col]).strip() if user_col and pd.notna(row.get(user_col, '')) else "admin"
             password = str(row[pass_col]).strip() if pass_col and pd.notna(row.get(pass_col, '')) else ""
-            
+
             if not ip or ip.lower() in ["nan", "none", "", "null"]:
                 return None
-            
+
+            # 校验IPv4地址格式
+            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+            if not re.match(ip_pattern, ip):
+                self.log_manager.log_detailed(f"第{idx+2}行IP格式无效: {ip}", "WARNING")
+                return None
+
+            # 校验每个IP段范围 0-255
+            parts = ip.split('.')
+            if not all(0 <= int(p) <= 255 for p in parts):
+                self.log_manager.log_detailed(f"第{idx+2}行IP段超出范围(0-255): {ip}", "WARNING")
+                return None
+
+            # 校验端口范围
+            try:
+                port_int = int(port)
+                if port_int < 1 or port_int > 65535:
+                    self.log_manager.log_detailed(f"第{idx+2}行端口号超出范围(1-65535): {port}", "WARNING")
+                    return None
+            except ValueError:
+                self.log_manager.log_detailed(f"第{idx+2}行端口号格式无效: {port}", "WARNING")
+                return None
+
+            # 密码空值校验（日志警告但不跳过行）
+            if not password:
+                self.log_manager.log_detailed(f"第{idx+2}行设备 {ip} 密码为空，将使用空密码尝试连接", "WARNING")
+
             device = DeviceInfo(
                 index=idx,
                 ip=ip,
-                port=port,
+                port=str(port_int),
                 username=username,
                 password=password,
                 status="未检测"
             )
-            
+
             if mode == "customized" and device.variables:
                 device.variables = self._extract_variables(row)
-            
+
             return device
-            
+
+        except ValueError as e:
+            self.log_manager.log_detailed(f"解析第{idx+2}行数据校验失败: {e}", "WARNING")
+            return None
         except Exception as e:
-            self.log_manager.log_detailed(f"解析第{idx+1}行失败: {e}", "WARNING")
+            self.log_manager.log_detailed(f"解析第{idx+2}行失败: {e}", "WARNING")
             return None
     
     def _extract_variables(self, row) -> dict:
