@@ -65,7 +65,7 @@ class TestReferenceToConfig:
 
         assert "参数库" in ref
         assert len(ref["参数库"]) > 0
-        assert ref["version"] == "10.0"
+        assert ref["version"] == "10.1"
 
     def test_reference_save_and_reload(self):
         """保存参考参数后，应该能重新加载"""
@@ -89,7 +89,7 @@ class TestReferenceToConfig:
                     assert loaded["total_parameters"] == len(
                         CGIReferenceManager.get_default_reference_data()
                     )
-                    assert loaded["version"] == "10.0"
+                    assert loaded["version"] == "10.1"
 
 
 # ============================================================================
@@ -495,4 +495,4 @@ class TestConfigPersistence:
                     with open(ref_path, "r", encoding="utf-8") as f:
                         saved = json.load(f)
                     assert "参数库" in saved
-                    assert saved["version"] == "10.0"
+                    assert saved["version"] == "10.1"

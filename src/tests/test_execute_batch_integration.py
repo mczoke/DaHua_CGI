@@ -89,7 +89,7 @@ def mock_server():
 
 
 def make_device(idx, ip="127.0.0.1", port=None, username="admin", password="admin",
-                online=True, status="在线"):
+                online=True, status="在线", selected=True):
     """Helper to create a DeviceInfo with proper defaults."""
     if port is None:
         port = str(MOCK_PORT)
@@ -97,6 +97,7 @@ def make_device(idx, ip="127.0.0.1", port=None, username="admin", password="admi
         index=idx, ip=ip, port=port,
         username=username, password=password,
         online=online,
+        selected=selected,
     )
     dev.status = status
     return dev

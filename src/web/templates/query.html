@@ -1,71 +1,82 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row">
-    <!-- 左侧：设备选择 -->
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-hdd-stack"></i> 目标设备</h5>
+<div class="ops-page">
+    <div class="ops-top-grid">
+        <section class="panel-box ops-panel ops-device-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-hdd-stack"></i> 目标设备</h6>
+                <a class="btn btn-outline-light btn-sm" href="/devices"><i class="bi bi-hdd-stack"></i> 设备管理</a>
             </div>
-            <div class="card-body">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="selectAllDevices" checked onchange="toggleDeviceSelection(this)">
-                    <label class="form-check-label">全选/取消</label>
+            <div class="btn-group btn-group-sm mb-2" role="group">
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('all')">全选</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('none')">全不选</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('online')">选在线</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('invert')">反选</button>
+            </div>
+            <div class="target-device-list" id="queryDeviceSummary">
+                正在读取设备选择...
+            </div>
+        </section>
+
+        <section class="panel-box ops-panel ops-library-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-journal-code"></i> 实测查询库</h6>
+            </div>
+            <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input class="form-control" id="queryTemplateSearch" type="search" placeholder="搜索模块、名称或说明" aria-label="搜索查询范本" autocomplete="off">
+            </div>
+            <select class="form-select config-library-select" id="queryTemplateList" size="8" aria-label="实测查询范本"></select>
+            <div class="param-example" id="queryTemplateInfo">
+                <div class="text-muted small">选择范本，这里同步显示参数与返回字段说明</div>
+            </div>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-outline-info btn-sm" type="button" onclick="insertSelectedQueryTemplate()">
+                    <i class="bi bi-plus-lg"></i> 加入查询
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" onclick="showSelectedTemplateFields()">
+                    <i class="bi bi-list-ul"></i> 返回字段
+                </button>
+            </div>
+        </section>
+
+        <section class="panel-box ops-panel ops-workspace-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-search"></i> CGI 查询</h6>
+            </div>
+
+            <h6 class="mb-2"><i class="bi bi-list-check"></i> 待查询 CGI</h6>
+            <textarea class="form-control bg-dark text-light command-textarea" id="queryCommands" rows="9" placeholder="从实测查询库加入，或每行输入一个命令/完整 URL"></textarea>
+
+            <div id="queryProgress" class="mt-3" style="display:none">
+                <div class="d-flex justify-content-between mb-1">
+                    <span id="queryStatus">查询中...</span>
+                    <span id="queryPercent">0%</span>
                 </div>
-                <div id="deviceCheckList" class="border rounded p-2" style="max-height:400px;overflow-y:auto">
-                    <div class="text-muted small">未加载设备</div>
+                <div class="progress" style="height:8px">
+                    <div id="queryBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
                 </div>
             </div>
-        </div>
+            <div class="ops-panel-footer">
+                <button class="btn btn-primary btn-sm flex-fill" onclick="startQuery()" id="queryBtn"><i class="bi bi-play-fill"></i> 开始</button>
+                <button class="btn btn-danger btn-sm flex-fill" onclick="stopQuery()" id="queryStopBtn" disabled><i class="bi bi-stop-fill"></i> 停止</button>
+                <button class="btn btn-success btn-sm flex-fill" onclick="exportQuery()" id="exportBtn" disabled><i class="bi bi-download"></i> 导出</button>
+            </div>
+        </section>
     </div>
 
-    <!-- 右侧：查询界面 -->
-    <div class="col-md-9">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-search"></i> CGI批量查询</h5>
-                <div>
-                    <button class="btn btn-primary btn-sm" onclick="startQuery()" id="queryBtn"><i class="bi bi-play-fill"></i> 开始查询</button>
-                    <button class="btn btn-success btn-sm" onclick="exportQuery()" id="exportBtn" disabled><i class="bi bi-download"></i> 导出结果</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <!-- 命令输入 -->
-                <div class="mb-3">
-                    <label class="form-label">CGI查询命令（每行一个）</label>
-                    <textarea class="form-control bg-dark text-light" id="queryCommands" rows="6" placeholder="输入CGI命令名称，每行一个&#10;例如:&#10;Alarm&#10;VideoInMode&#10;VideoInChannel">Alarm
-VideoInMode
-VideoInChannel</textarea>
-                    <div class="form-text text-muted">
-                        <small>纯命令名模式（自动拼接标准CGI URL）。<br>
-                        自定义URL模式：直接输入完整URL，支持 {{IP}} {{port}} {{username}} {{password}} 变量替换。</small>
-                    </div>
-                </div>
-
-                <!-- 进度条 -->
-                <div id="queryProgress" class="mb-3" style="display:none">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span id="queryStatus">查询中...</span>
-                        <span id="queryPercent">0%</span>
-                    </div>
-                    <div class="progress" style="height:8px">
-                        <div id="queryBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
-                    </div>
-                </div>
-
-                <!-- 结果表格 -->
-                <div id="queryResultSection" style="display:none">
-                    <h6><i class="bi bi-table"></i> 查询结果</h6>
-                    <div class="table-responsive" style="max-height:500px;overflow-y:auto">
-                        <table class="table table-dark table-sm table-hover table-bordered" id="queryResultTable">
-                            <thead id="queryResultHead"></thead>
-                            <tbody id="queryResultBody"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+    <section class="panel-box ops-panel ops-results-panel" id="queryResultSection" style="display:none">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-table"></i> 查询结果</h6>
+            <small class="text-muted">查询中会实时刷新</small>
         </div>
-    </div>
+        <div class="result-scroll">
+            <table class="table table-dark table-sm table-hover table-bordered sticky-head" id="queryResultTable">
+                <thead id="queryResultHead"></thead>
+                <tbody id="queryResultBody"></tbody>
+            </table>
+        </div>
+    </section>
 </div>
 {% endblock %}
 
@@ -73,161 +84,266 @@ VideoInChannel</textarea>
 <script>
 let queryColumns = [];
 let queryData = [];
-let deviceList = [];
+let selectedDeviceCount = 0;
+let queryTemplates = [];
+let queryPollInterval = null;
 
-// 获取设备列表
-function refreshDevices() {
-    fetch('/api/devices').then(r=>r.json()).then(d => {
-        deviceList = d.devices || [];
-        renderDeviceList();
+function refreshSelectedDevices() {
+    fetch('/api/devices').then(r => r.json()).then(d => {
+        const devices = d.devices || [];
+        const selected = devices.filter(device => device.selected);
+        selectedDeviceCount = selected.length;
+        const summary = document.getElementById('queryDeviceSummary');
+        if (!devices.length) {
+            summary.innerHTML = '<span class="text-muted">请先添加或导入设备</span>';
+            return;
+        }
+        summary.innerHTML = `<div class="target-summary">已选择 ${selected.length}/${devices.length} 台</div>` +
+            devices.map((device, index) => renderTargetDeviceRow(device, index)).join('');
+    }).catch(error => {
+        document.getElementById('queryDeviceSummary').innerHTML = `<span class="text-danger">读取设备失败: ${escapeHtml(error)}</span>`;
     });
 }
 
-function renderDeviceList() {
-    const container = document.getElementById('deviceCheckList');
-    if (deviceList.length === 0) {
-        container.innerHTML = '<div class="text-muted small">未加载设备</div>';
+function renderTargetDeviceRow(device, index) {
+    const statusIcon = device.online
+        ? '<i class="bi bi-check-circle text-success"></i>'
+        : '<i class="bi bi-x-circle text-danger"></i>';
+    return `<div class="target-device-row ${device.selected ? 'is-selected' : ''}">
+        <div class="target-device-main">
+            <input class="form-check-input target-device-cb" type="checkbox" id="qry_dev_${index}" ${device.selected ? 'checked' : ''} onchange="toggleDeviceSelection(${index})">
+            <label class="target-device-label" for="qry_dev_${index}">
+                <span class="target-device-ip">${escapeHtml(device.ip)}:${escapeHtml(device.port)}</span>
+                <span>${statusIcon}</span>
+            </label>
+        </div>
+    </div>`;
+}
+
+function selectDevices(mode) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: mode})
+    }).then(r => r.json()).then(data => {
+        if (data.error) { showToast(data.error, 'danger'); return; }
+        refreshSelectedDevices();
+    }).catch(error => showToast('设备选择失败: ' + error, 'danger'));
+}
+
+function toggleDeviceSelection(index) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'toggle', index: index})
+    }).then(r => r.json()).then(data => {
+        if (data.error) { showToast(data.error, 'danger'); return; }
+        refreshSelectedDevices();
+    }).catch(error => showToast('设备选择失败: ' + error, 'danger'));
+}
+
+function loadQueryTemplates() {
+    fetch('/api/cgi-library').then(r => r.json()).then(data => {
+        queryTemplates = data.query_templates || [];
+        const select = document.getElementById('queryTemplateList');
+        select.onchange = updateQueryTemplateInfo;
+        document.getElementById('queryTemplateSearch').addEventListener('input', event => {
+            renderQueryTemplates(event.target.value);
+        });
+        renderQueryTemplates();
+    }).catch(() => {
+        document.getElementById('queryTemplateInfo').textContent = '查询范本加载失败';
+    });
+}
+
+function renderQueryTemplates(keyword = '') {
+    const select = document.getElementById('queryTemplateList');
+    const previousValue = select.value;
+    const searchText = keyword.trim().toLowerCase();
+    const visibleTemplates = queryTemplates.map((template, index) => ({template, index})).filter(({template}) => {
+        const text = [template.module, template.name, template.description, template.query_url]
+            .map(value => String(value || ''))
+            .join(' ')
+            .toLowerCase();
+        return !searchText || text.includes(searchText);
+    });
+
+    select.innerHTML = visibleTemplates.length
+        ? visibleTemplates.map(({template, index}) =>
+            `<option value="${index}">[${template.verified ? '实测' : '参考'}] ${escapeHtml(template.module)} - ${escapeHtml(template.description || template.name)}</option>`
+        ).join('')
+        : '<option value="" disabled>没有匹配的查询范本</option>';
+
+    if (visibleTemplates.some(({index}) => String(index) === previousValue)) {
+        select.value = previousValue;
+    } else {
+        select.selectedIndex = -1;
+    }
+    updateQueryTemplateInfo();
+}
+
+function selectedQueryTemplate() {
+    const select = document.getElementById('queryTemplateList');
+    return queryTemplates[parseInt(select.value, 10)] || null;
+}
+
+function updateQueryTemplateInfo() {
+    const template = selectedQueryTemplate();
+    const info = document.getElementById('queryTemplateInfo');
+    if (!template) {
+        info.textContent = '选择范本查看说明';
         return;
     }
-    let html = '';
-    deviceList.forEach((dev, i) => {
-        const statusIcon = dev.online ? '✅' : (dev.status === '未检测' ? '⚪' : '❌');
-        html += `<div class="form-check">
-            <input class="form-check-input dev-cb" type="checkbox" value="${i}" id="dev_${i}" ${dev.selected?'checked':''}>
-            <label class="form-check-label small" for="dev_${i}">
-                ${statusIcon} ${dev.ip}:${dev.port}
-            </label>
-        </div>`;
-    });
-    container.innerHTML = html;
+    info.innerHTML = `<div class="text-info mb-1">${escapeHtml(template.name)}</div>
+        <div>${escapeHtml(template.query_url)}</div>
+        <div class="mt-1">参数: ${(template.params || []).length} 个，返回字段摘要: ${(template.response_fields || []).length} 条</div>`;
 }
 
-function toggleDeviceSelection(cb) {
-    document.querySelectorAll('.dev-cb').forEach(c => c.checked = cb.checked);
+function insertSelectedQueryTemplate() {
+    const template = selectedQueryTemplate();
+    if (!template) { showToast('请选择一个查询范本', 'warning'); return; }
+    const input = document.getElementById('queryCommands');
+    const lines = input.value.split('\n').map(line => line.trim()).filter(Boolean);
+    if (!lines.includes(template.query_url)) lines.push(template.query_url);
+    input.value = lines.join('\n');
+    showToast('已加入查询命令', 'info');
 }
 
-function getSelectedDevices() {
-    return Array.from(document.querySelectorAll('.dev-cb:checked')).map(c => parseInt(c.value));
+function showSelectedTemplateFields() {
+    const template = selectedQueryTemplate();
+    if (!template) { showToast('请选择一个查询范本', 'warning'); return; }
+    const params = template.params || [];
+    const fields = template.response_fields || [];
+    document.getElementById('queryTemplateInfo').innerHTML = `<div class="text-info mb-1">${escapeHtml(template.description || template.name)}</div>
+        <div class="mb-2">${escapeHtml(template.query_url)}</div>
+        ${params.map(param => `<div class="border-top border-secondary py-1">
+            <div>${escapeHtml(param.param || param.name || '')}</div>
+            <div class="text-muted">${escapeHtml(param.type || 'string')} | ${escapeHtml(param.desc || '')} | 示例: ${escapeHtml(param.example || param.default || '')}</div>
+        </div>`).join('')}
+        ${fields.length ? `<div class="text-info mt-2">实测返回字段摘要</div>${fields.map(field => `<div>${escapeHtml(field)}</div>`).join('')}` : ''}`;
 }
 
 function startQuery() {
-    const selected = getSelectedDevices();
-    if (selected.length === 0) {
-        showToast('请至少选择一个设备', 'warning');
-        return;
-    }
-
+    if (selectedDeviceCount === 0) { showToast('请先选择设备', 'warning'); return; }
     const commands = document.getElementById('queryCommands').value.trim().split('\n')
         .map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    if (!commands.length) { showToast('请至少输入一个查询命令', 'warning'); return; }
 
-    if (commands.length === 0) {
-        showToast('请至少输入一个查询命令', 'warning');
-        return;
-    }
-
-    // 显示进度
     document.getElementById('queryProgress').style.display = 'block';
+    document.getElementById('queryResultSection').style.display = 'block';
     document.getElementById('queryBar').style.width = '0%';
     document.getElementById('queryPercent').textContent = '0%';
     document.getElementById('queryStatus').textContent = '查询中...';
     document.getElementById('queryBtn').disabled = true;
+    document.getElementById('queryStopBtn').disabled = false;
     document.getElementById('exportBtn').disabled = true;
+    queryColumns = [];
+    queryData = [];
+    renderQueryResults();
 
-    // 发送查询请求
     fetch('/api/query/execute', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({devices: selected, commands: commands, selected_only: false})
+        body: JSON.stringify({commands: commands})
     }).then(r => r.json()).then(d => {
         if (d.error) {
             showToast(d.error, 'danger');
             document.getElementById('queryBtn').disabled = false;
+            document.getElementById('queryStopBtn').disabled = true;
             document.getElementById('queryProgress').style.display = 'none';
             return;
         }
-        queryColumns = d.columns;
-        queryData = d.data;
-        renderQueryResults();
-        document.getElementById('queryStatus').textContent = '查询完成';
-        document.getElementById('queryBar').style.width = '100%';
-        document.getElementById('queryPercent').textContent = '100%';
-        document.getElementById('queryBtn').disabled = false;
-        document.getElementById('exportBtn').disabled = false;
-        setTimeout(() => { document.getElementById('queryProgress').style.display = 'none'; }, 2000);
-        showToast(`查询完成: ${d.count} 台设备`, 'success');
+        showToast(d.message || '查询已启动', 'info');
+        if (queryPollInterval) clearInterval(queryPollInterval);
+        queryPollInterval = setInterval(pollQueryStatus, 600);
+        pollQueryStatus();
     }).catch(e => {
         showToast('查询失败: ' + e, 'danger');
         document.getElementById('queryBtn').disabled = false;
+        document.getElementById('queryStopBtn').disabled = true;
         document.getElementById('queryProgress').style.display = 'none';
     });
 }
 
-function renderQueryResults() {
-    if (!queryColumns || queryColumns.length === 0) return;
+function stopQuery() {
+    document.getElementById('queryStopBtn').disabled = true;
+    document.getElementById('queryStatus').textContent = '正在停止...';
+    fetch('/api/query/stop', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                showToast(d.error, 'danger');
+                document.getElementById('queryStopBtn').disabled = false;
+                return;
+            }
+            showToast(d.message || '已请求停止查询', 'warning');
+        })
+        .catch(e => {
+            showToast('停止失败: ' + e, 'danger');
+            document.getElementById('queryStopBtn').disabled = false;
+        });
+}
 
-    document.getElementById('queryResultSection').style.display = 'block';
+function pollQueryStatus() {
+    fetch('/api/query/status').then(r => r.json()).then(s => {
+        const p = s.progress || {};
+        const pc = p.percent || 0;
+        document.getElementById('queryBar').style.width = pc + '%';
+        document.getElementById('queryPercent').textContent = pc + '%';
+        document.getElementById('queryStatus').textContent = p.message || (s.stop_requested ? '正在停止...' : '查询中...');
 
-    // 渲染表头
-    const thead = document.getElementById('queryResultHead');
-    let headerHtml = '<tr>';
-    queryColumns.forEach(col => {
-        headerHtml += `<th class="small">${col}</th>`;
+        queryColumns = s.columns || queryColumns;
+        queryData = s.data || queryData;
+        renderQueryResults();
+        document.getElementById('exportBtn').disabled = queryData.length === 0;
+
+        if (s.completed || s.stopped) {
+            if (queryPollInterval) clearInterval(queryPollInterval);
+            queryPollInterval = null;
+            document.getElementById('queryBtn').disabled = false;
+            document.getElementById('queryStopBtn').disabled = true;
+            document.getElementById('queryBar').style.width = s.stopped ? pc + '%' : '100%';
+            document.getElementById('queryPercent').textContent = s.stopped ? pc + '%' : '100%';
+            document.getElementById('queryStatus').textContent = s.stopped ? '已停止' : '查询完成';
+            showToast(s.stopped ? `查询已停止: ${s.count} 台设备结果` : `查询完成: ${s.count} 台设备`, s.stopped ? 'warning' : 'success');
+        }
+    }).catch(e => {
+        if (queryPollInterval) clearInterval(queryPollInterval);
+        queryPollInterval = null;
+        showToast('查询状态获取失败: ' + e, 'danger');
+        document.getElementById('queryBtn').disabled = false;
+        document.getElementById('queryStopBtn').disabled = true;
     });
-    headerHtml += '</tr>';
-    thead.innerHTML = headerHtml;
+}
 
-    // 渲染数据
+function renderQueryResults() {
+    document.getElementById('queryResultSection').style.display = 'block';
+    const thead = document.getElementById('queryResultHead');
     const tbody = document.getElementById('queryResultBody');
-    let bodyHtml = '';
-    queryData.forEach(row => {
-        bodyHtml += '<tr>';
-        row.forEach((val, idx) => {
+    if (!queryColumns.length) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '<tr><td colspan="1" class="text-center text-muted">等待查询结果</td></tr>';
+        return;
+    }
+    thead.innerHTML = '<tr>' + queryColumns.map(col => `<th class="small">${escapeHtml(col)}</th>`).join('') + '</tr>';
+    tbody.innerHTML = queryData.map(row => {
+        return '<tr>' + row.map((val, idx) => {
             const colName = queryColumns[idx] || '';
             let cls = '';
-            if (colName === 'Ping状态') {
-                cls = val === '在线' ? 'text-success' : (val === '离线' ? 'text-danger' : '');
-            } else if (colName === '账号验证') {
-                cls = val === '通过' ? 'text-success' : (val === '失败' ? 'text-danger' : 'text-warning');
-            }
-            bodyHtml += `<td class="small ${cls}">${escapeHtml(val)}</td>`;
-        });
-        bodyHtml += '</tr>';
-    });
-    tbody.innerHTML = bodyHtml;
+            if (colName === 'Ping状态') cls = val === '在线' ? 'text-success' : (val === '离线' ? 'text-danger' : '');
+            if (colName === '账号验证') cls = val === '通过' ? 'text-success' : (val === '失败' ? 'text-danger' : 'text-warning');
+            return `<td class="small ${cls}">${escapeHtml(val)}</td>`;
+        }).join('') + '</tr>';
+    }).join('');
 }
 
 function exportQuery() {
-    if (!queryData || queryData.length === 0) {
-        showToast('没有查询结果可导出', 'warning');
-        return;
-    }
-    // 触发文件下载
+    if (!queryData.length) { showToast('没有查询结果可导出', 'warning'); return; }
     window.location.href = '/api/query/export';
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showToast(msg, type) {
-    const container = document.getElementById('toastContainer') || (()=>{
-        const c = document.createElement('div');
-        c.id = 'toastContainer';
-        c.style.cssText = 'position:fixed;top:60px;right:20px;z-index:9999';
-        document.body.appendChild(c);
-        return c;
-    })();
-    const t = document.createElement('div');
-    t.className = `toast align-items-center text-bg-${type} border-0 show`;
-    t.innerHTML = `<div class="d-flex"><div class="toast-body">${escapeHtml(msg)}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
-    container.appendChild(t);
-    setTimeout(()=>t.remove(), 4000);
-}
-
-// 自动刷新设备列表
-setInterval(refreshDevices, 5000);
-refreshDevices();
+setInterval(refreshSelectedDevices, 5000);
+refreshSelectedDevices();
+loadQueryTemplates();
 </script>
 {% endblock %}

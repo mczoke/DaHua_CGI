@@ -20,6 +20,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+from urllib.parse import parse_qs, urlparse
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -52,6 +53,18 @@ class CgiQueryExecutor:
         self.session = self._create_session()
         self._stop_flag = threading.Event()
 
+    def stop(self) -> None:
+        """请求停止查询，并关闭会话以尽快中断后续请求。"""
+        self._stop_flag.set()
+        try:
+            self.session.close()
+        except Exception:
+            pass
+
+    def is_stopped(self) -> bool:
+        """返回当前查询是否已收到停止请求。"""
+        return self._stop_flag.is_set()
+
     def _create_session(self) -> requests.Session:
         """创建带重试的 requests Session"""
         session = requests.Session()
@@ -83,6 +96,19 @@ class CgiQueryExecutor:
             return HTTPBasicAuth(username, password)
         else:
             return HTTPDigestAuth(username, password)
+
+    def _command_display_name(self, command: str) -> str:
+        """返回查询结果表中使用的简洁命令列名。"""
+        if command.startswith("http://") or command.startswith("https://"):
+            try:
+                query = parse_qs(urlparse(command).query)
+                if query.get("name"):
+                    return query["name"][0]
+            except Exception:
+                pass
+        if "name=" in command:
+            return command.split("name=", 1)[-1].split("&", 1)[0]
+        return command.split("=")[-1] if "=" in command else command
 
     def _ping_device(self, ip: str) -> str:
         """Ping检测设备连通性，返回 '在线' 或 '离线'"""
@@ -209,10 +235,11 @@ class CgiQueryExecutor:
                 except Exception:
                     pass
 
-            # 识别 key=value 格式（每行一个，如 table.xxx=yyy）
+            # 识别 key=value 格式（支持单行和多行，如 table.xxx=yyy）
             parsed_dict = {}
             lines = text.split("\n")
-            if len(lines) > 1 and all("=" in line for line in lines if line.strip()):
+            non_empty_lines = [line.strip() for line in lines if line.strip()]
+            if non_empty_lines and all("=" in line for line in non_empty_lines):
                 for line in lines:
                     line = line.strip()
                     if not line:
@@ -240,6 +267,7 @@ class CgiQueryExecutor:
         query_commands: List[str],
         progress_callback: Optional[Callable] = None,
         stop_callback: Optional[Callable] = None,
+        row_callback: Optional[Callable] = None,
     ) -> pd.DataFrame:
         """
         批量执行CGI查询，返回结果DataFrame
@@ -262,7 +290,7 @@ class CgiQueryExecutor:
         query_column_names = []
         for cmd in query_commands:
             # 简写命令名
-            col_name = cmd.split("=")[-1] if "=" in cmd else cmd
+            col_name = self._command_display_name(cmd)
             if len(col_name) > 40:
                 col_name = col_name[:40]
             # 避免重复列名
@@ -309,16 +337,20 @@ class CgiQueryExecutor:
 
             # 3. 逐条发送查询命令
             for cmd, col_name in zip(query_commands, query_column_names):
+                if self._stop_flag.is_set() or (stop_callback and stop_callback()):
+                    self._log(f"查询被用户中断 (设备 {idx+1}/{total})", "WARNING")
+                    break
                 result = self._send_query_command(
                     device.ip, device.port, device.username, device.password, cmd
                 )
-                row_data[col_name] = result.get("text", "")
+                parsed = result.get("parsed") or {}
+                row_data[col_name] = next(iter(parsed.values()), "") if len(parsed) == 1 else result.get("text", "")
                 if col_name not in all_columns_set:
                     all_columns_set.add(col_name)
                     _seen_command_cols.append(col_name)
                 # 展开解析后的 key=value 到列（带命令名前缀）
-                if result.get("parsed"):
-                    for k, v in result["parsed"].items():
+                if parsed:
+                    for k, v in parsed.items():
                         expanded_col = f"{col_name}.{k}"
                         row_data[expanded_col] = v
                         if expanded_col not in all_columns_set:
@@ -326,6 +358,8 @@ class CgiQueryExecutor:
                             _seen_command_cols.append(expanded_col)
 
             results.append(row_data)
+            if row_callback:
+                row_callback(row_data, list(_seen_command_cols))
 
             # 更新进度
             if progress_callback:

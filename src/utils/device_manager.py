@@ -44,7 +44,7 @@ class DeviceInfo:
     password: str = ""
     status: str = "未检测"
     online: bool = False
-    selected: bool = True
+    selected: bool = False
     variables: Dict[str, str] = field(default_factory=dict)
     result: Optional[Dict] = None
     excel_row: int = 0
@@ -247,8 +247,8 @@ class DeviceLoader:
                 status="未检测"
             )
 
-            if mode == "customized" and device.variables:
-                device.variables = self._extract_variables(row)
+            if mode == "customized":
+                device.variables = self._extract_variables(row, column_mapping)
 
             return device
 
@@ -259,14 +259,22 @@ class DeviceLoader:
             self.log_manager.log_detailed(f"解析第{idx+2}行失败: {e}", "WARNING")
             return None
     
-    def _extract_variables(self, row) -> dict:
+    def _extract_variables(self, row, column_mapping=None) -> dict:
         """提取变量"""
         variables = {}
+        excluded_columns = set()
+        if column_mapping:
+            excluded_columns = {
+                col for col in column_mapping.values()
+                if col is not None
+            }
         for col, value in row.items():
+            if col in excluded_columns:
+                continue
             if pd.notna(value):
                 str_value = str(value).strip()
                 if str_value:
-                    variables[col] = str_value
+                    variables[str(col).strip()] = str_value
         return variables
 
 

@@ -54,6 +54,11 @@ class TestDeviceInfo:
         info = d.get_display_info()
         assert info == "192.168.1.1:80"
 
+    def test_device_defaults_to_unselected(self):
+        """新建设备默认不选中，避免未选择时删除选中/批量操作误伤全部设备"""
+        d = DeviceInfo(index=0, ip="192.168.1.1")
+        assert d.selected is False
+
 
 # ============================================================================
 # DeviceLoader
@@ -162,6 +167,23 @@ class TestDeviceLoader:
             assert devices[0].ip == "10.0.0.1"
             assert devices[2].ip == "10.0.0.3"
             assert loader.excel_source_file == "/fake/path.xlsx"
+
+    def test_load_from_excel_customized_extracts_extra_columns(self, loader):
+        osd_param = "VideoWidget[0].CustomTitle[1].Text"
+        df = pd.DataFrame({
+            "IP地址": ["10.0.0.1", "10.0.0.2"],
+            "端口": ["80", "80"],
+            "用户名": ["admin", "admin"],
+            "密码": ["a", "b"],
+            osd_param: ["一号门", "二号门"],
+        })
+
+        with patch("utils.device_manager.pd.read_excel", return_value=df):
+            devices, count = loader.load_from_excel("/fake/path.xlsx", mode="customized")
+
+        assert count == 2
+        assert devices[0].variables == {osd_param: "一号门"}
+        assert devices[1].variables == {osd_param: "二号门"}
 
     def test_load_from_excel_empty_raises(self, loader):
         df = pd.DataFrame()

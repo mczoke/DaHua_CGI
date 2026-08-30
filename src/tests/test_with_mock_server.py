@@ -100,6 +100,7 @@ def device():
     return DeviceInfo(
         index=0, ip="127.0.0.1", port=str(MOCK_PORT),
         username="admin", password="admin", online=True, status="在线",
+        selected=True,
     )
 
 
@@ -139,6 +140,7 @@ class TestExecutorWithMockServer:
         device2 = DeviceInfo(
             index=1, ip="127.0.0.1", port=str(MOCK_PORT),
             username="admin", password="admin", online=True, status="在线",
+            selected=True,
         )
         cfg = {
             "cgi_commands": ["param=2"],

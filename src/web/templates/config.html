@@ -1,220 +1,440 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-gear"></i> 配置执行</h5>
-                <button class="btn btn-success" onclick="startExecute()"><i class="bi bi-play-fill"></i> 执行配置</button>
+<div class="ops-page">
+    <div class="ops-top-grid">
+        <section class="panel-box ops-panel ops-device-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-hdd-stack"></i> 目标设备</h6>
+                <a class="btn btn-outline-light btn-sm" href="/devices"><i class="bi bi-hdd-stack"></i> 设备管理</a>
             </div>
-            <div class="card-body">
-                <div class="row">
-                    <!-- 左侧: 设备选择 -->
-                    <div class="col-md-4">
-                        <h6><i class="bi bi-hdd-stack"></i> 目标设备</h6>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="selectedOnly" checked>
-                            <label class="form-check-label">仅选中的设备</label>
-                        </div>
-                        <div class="border rounded p-2 mb-3" style="max-height:200px;overflow-y:auto">
-                            <div id="execDeviceList" class="text-muted small">
-                                未加载设备
-                            </div>
-                        </div>
-                    </div>
+            <div class="btn-group btn-group-sm mb-2" role="group">
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('all')">全选</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('none')">全不选</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('online')">选在线</button>
+                <button class="btn btn-outline-light" type="button" onclick="selectDevices('invert')">反选</button>
+            </div>
+            <div class="target-device-list" id="execDeviceList">
+                <div class="text-muted small">请先添加或导入设备</div>
+            </div>
+        </section>
 
-                    <!-- 中间: 命令选择 -->
-                    <div class="col-md-4">
-                        <h6><i class="bi bi-list-check"></i> CGI 命令</h6>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="selectAllCommands" onchange="toggleAllCommands(this)" checked>
-                            <label class="form-check-label">全选</label>
-                        </div>
-                        <div class="border rounded p-2" style="max-height:200px;overflow-y:auto" id="commandList">
-                            <div class="text-muted small">加载命令中...</div>
-                        </div>
-                    </div>
+        <section class="panel-box ops-panel ops-library-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-journal-code"></i> 实测配置库</h6>
+            </div>
+            <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input class="form-control" id="setOptionSearch" type="search" placeholder="搜索模块、参数或说明" aria-label="搜索配置参数" autocomplete="off">
+            </div>
+            <select class="form-select config-library-select" id="setOptionList" size="9" aria-label="实测配置参数"></select>
+            <div class="param-example" id="setOptionExample">
+                <div class="text-muted small">点击上方配置参数，这里同步显示要填入的参数和说明</div>
+            </div>
+        </section>
 
-                    <!-- 右侧: 执行策略 -->
-                    <div class="col-md-4">
-                        <h6><i class="bi bi-diagram-3"></i> 执行策略</h6>
-                        <select class="form-select mb-3" id="execStrategy">
-                            <option value="device_first">设备优先（逐设备执行所有命令）</option>
-                            <option value="command_first">命令优先（逐命令遍历所有设备）</option>
-                        </select>
-                        <h6><i class="bi bi-info-circle"></i> 状态</h6>
-                        <div class="border rounded p-2" id="execStatus">
-                            <span class="text-muted">就绪</span>
-                        </div>
-                    </div>
+        <section class="panel-box ops-panel ops-workspace-panel">
+            <div class="ops-panel-header">
+                <h6 class="mb-0"><i class="bi bi-gear"></i> 配置执行</h6>
+            </div>
+
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="useImportedParams">
+                <label class="form-check-label small" for="useImportedParams">使用导入参数</label>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between my-2">
+                <h6 class="mb-0"><i class="bi bi-list-check"></i> 待执行配置</h6>
+                <button class="btn btn-outline-secondary btn-sm" type="button" onclick="clearCustomCommands()">
+                    <i class="bi bi-x-lg"></i> 清空
+                </button>
+            </div>
+            <div class="pending-command-list" id="customCommandList">
+                <div class="text-muted small">尚未加入配置参数</div>
+            </div>
+
+            <h6 class="mt-3"><i class="bi bi-diagram-3"></i> 执行策略</h6>
+            <select class="form-select mb-2" id="execStrategy">
+                <option value="device_first">设备优先（逐设备执行所有命令）</option>
+                <option value="command_first">命令优先（逐命令遍历所有设备）</option>
+            </select>
+            <div class="border rounded p-2 mb-2" id="execStatus">
+                <span class="text-muted">就绪</span>
+            </div>
+            <div id="execProgress" style="display:none">
+                <div class="d-flex justify-content-between mb-1">
+                    <span id="execMsg">执行中...</span>
+                    <span id="execPercent">0%</span>
                 </div>
-
-                <!-- 进度条 -->
-                <div id="execProgress" class="mt-3" style="display:none">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span id="execMsg">执行中...</span>
-                        <span id="execPercent">0%</span>
-                    </div>
-                    <div class="progress" style="height:12px">
-                        <div id="execBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
-                    </div>
+                <div class="progress" style="height:12px">
+                    <div id="execBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
                 </div>
+            </div>
+            <div class="ops-panel-footer">
+                <button class="btn btn-success btn-sm flex-fill" onclick="startExecute()" id="execStartBtn"><i class="bi bi-play-fill"></i> 执行</button>
+                <button class="btn btn-danger btn-sm flex-fill" onclick="stopExecute()" id="execStopBtn" disabled><i class="bi bi-stop-fill"></i> 停止</button>
+            </div>
+        </section>
+    </div>
 
-                <!-- 结果 -->
-                <div id="execResults" class="mt-3" style="display:none">
-                    <h6><i class="bi bi-table"></i> 执行结果</h6>
-                    <div class="table-responsive" style="max-height:400px;overflow-y:auto">
-                        <table class="table table-dark table-sm table-hover">
-                            <thead>
-                                <tr>
-                                    <th>设备IP</th>
-                                    <th>总命令</th>
-                                    <th>成功</th>
-                                    <th>失败</th>
-                                    <th>耗时(s)</th>
-                                    <th>状态</th>
-                                </tr>
-                            </thead>
-                            <tbody id="resultTableBody"></tbody>
-                        </table>
-                    </div>
+    <section class="panel-box ops-panel ops-results-panel">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-table"></i> 执行结果</h6>
+            <small class="text-muted" id="execResultSummary">等待执行</small>
+        </div>
+        <div class="ops-bottom-grid">
+            <div class="result-scroll">
+                <table class="table table-dark table-sm table-hover sticky-head">
+                    <thead>
+                        <tr>
+                            <th>设备IP</th>
+                            <th>总命令</th>
+                            <th>成功</th>
+                            <th>失败</th>
+                            <th>耗时(s)</th>
+                            <th>状态</th>
+                            <th>消息</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody">
+                        <tr><td colspan="7" class="text-center text-muted">等待执行</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <div class="ops-subheading"><i class="bi bi-journal-text"></i> 执行日志</div>
+                <div class="execution-log-list" id="execLogList">
+                    <div class="text-muted small">暂无日志</div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
-let commands = [];
+let setOptions = [];
+let customCommands = [];
 let execPollInterval = null;
+let logPollInterval = null;
+let execRenderedRows = {};
 
-function loadCommands() {
-    fetch('/api/commands').then(r=>r.json()).then(d=>{
-        commands = d.commands || [];
-        renderCommands();
+const CONFIG_PARAMETER_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\[\d+\])?(?:\.[A-Za-z][A-Za-z0-9_]*(?:\[\d+\])?)+$/;
+
+function configVariables(device) {
+    const variables = device.config_variables || {};
+    return Object.entries(variables).filter(([key, value]) => CONFIG_PARAMETER_RE.test(key) && String(value || '').trim());
+}
+
+function loadSetOptions() {
+    fetch('/api/cgi-library').then(r => r.json()).then(data => {
+        setOptions = data.set_options || [];
+        const select = document.getElementById('setOptionList');
+        select.onchange = updateSetOptionInfo;
+        document.getElementById('setOptionSearch').addEventListener('input', event => {
+            renderSetOptions(event.target.value);
+        });
+        renderSetOptions();
+    }).catch(() => {
+        document.getElementById('setOptionExample').innerHTML = '<div class=\'text-danger small\'>配置选项加载失败</div>';
     });
 }
-function renderCommands() {
-    const el = document.getElementById('commandList');
-    if (commands.length === 0) {
-        el.innerHTML = '<div class="text-muted small">没有可用命令</div>';
+
+function renderSetOptions(keyword = '') {
+    const select = document.getElementById('setOptionList');
+    const previousValue = select.value;
+    const searchText = keyword.trim().toLowerCase();
+    const visibleOptions = setOptions.map((option, index) => ({option, index})).filter(({option}) => {
+        const text = [option.module, option.parameter, option.description, option.example]
+            .map(value => String(value || ''))
+            .join(' ')
+            .toLowerCase();
+        return !searchText || text.includes(searchText);
+    });
+
+    select.innerHTML = visibleOptions.length
+        ? visibleOptions.map(({option, index}) =>
+            `<option value="${index}">[${escapeHtml(option.module)}] ${escapeHtml(option.parameter)} - ${escapeHtml(option.description)}</option>`
+        ).join('')
+        : '<option value="" disabled>没有匹配的配置参数</option>';
+
+    if (visibleOptions.some(({index}) => String(index) === previousValue)) {
+        select.value = previousValue;
+    } else {
+        select.selectedIndex = -1;
+    }
+    updateSetOptionInfo();
+}
+
+function selectedSetOption() {
+    const select = document.getElementById('setOptionList');
+    return setOptions[parseInt(select.value, 10)] || null;
+}
+
+function updateSetOptionInfo() {
+    const option = selectedSetOption();
+    const bar = document.getElementById('setOptionExample');
+    if (!option) {
+        bar.innerHTML = '<div class="text-muted small">点击上方配置参数，这里同步显示要填入的参数和说明</div>';
         return;
     }
-    let html = '';
-    commands.forEach((c, i) => {
-        html += `<div class="form-check">
-            <input class="form-check-input cmd-cb" type="checkbox" value="${c.name}" id="cmd_${i}" checked>
-            <label class="form-check-label" for="cmd_${i}">
-                <span class="badge bg-info">${c.name}</span>
-                <small class="text-muted">${c.description || ''}</small>
-            </label>
-        </div>`;
-    });
-    el.innerHTML = html;
+    bar.innerHTML = `
+        <div class="param-example-title">
+            <span class="text-warning">[${escapeHtml(option.module)}]</span>
+            <code>${escapeHtml(option.parameter)}</code>
+            <span class="text-info"> (${escapeHtml(option.type)})</span>
+        </div>
+        <div class="small text-muted mb-2">${escapeHtml(option.description || '')}</div>
+        <div class="input-group input-group-sm">
+            <input class="form-control" id="setOptionValue" placeholder="示例: ${escapeHtml(option.example || '填写值')}" autocomplete="off">
+            <button class="btn btn-outline-warning btn-sm" type="button" onclick="addSetOption()"><i class="bi bi-plus-lg"></i> 加入</button>
+        </div>
+    `;
 }
 
-function toggleAllCommands(cb) {
-    document.querySelectorAll('.cmd-cb').forEach(c => c.checked = cb.checked);
+function addSetOption() {
+    const option = selectedSetOption();
+    if (!option) { showToast('请选择一个配置项', 'warning'); return; }
+    const valueInput = document.getElementById('setOptionValue');
+    const value = valueInput ? valueInput.value.trim() : '';
+    if (!value) { showToast('请填写配置值', 'warning'); return; }
+    const command = `${option.parameter}=${value}`;
+    if (!customCommands.includes(command)) customCommands.push(command);
+    if (valueInput) valueInput.value = '';
+    renderCustomCommands();
+    showToast('已加入待执行配置', 'info');
+}
+
+function renderCustomCommands() {
+    const list = document.getElementById('customCommandList');
+    if (!customCommands.length) {
+        list.innerHTML = '<div class="text-muted small">尚未加入配置参数</div>';
+        return;
+    }
+    list.innerHTML = customCommands.map((command, index) => `
+        <div class="pending-command-row">
+            <code>${escapeHtml(command)}</code>
+            <button class="btn btn-outline-danger btn-sm" type="button" onclick="removeCustomCommand(${index})">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function removeCustomCommand(index) {
+    customCommands.splice(index, 1);
+    renderCustomCommands();
+}
+
+function clearCustomCommands() {
+    customCommands = [];
+    renderCustomCommands();
 }
 
 function refreshExecDevices() {
-    fetch('/api/devices').then(r=>r.json()).then(d=>{
+    fetch('/api/devices').then(r => r.json()).then(d => {
         const devices = d.devices || [];
-        const el = document.getElementById('execDeviceList');
         const selected = devices.filter(x => x.selected);
-        el.innerHTML = selected.length
-            ? selected.map(x => `<div><span class="badge bg-secondary">${x.ip}:${x.port}</span> ${x.online?'<i class="bi bi-check-circle text-success"></i>':'<i class="bi bi-x-circle text-danger"></i>'}</div>`).join('')
-            : '<span class="text-muted">没有选中的设备</span>';
+        const importedParamCount = new Set(selected.flatMap(device => configVariables(device).map(([key]) => key))).size;
+        const el = document.getElementById('execDeviceList');
+        const importedToggle = document.getElementById('useImportedParams');
+        if (!devices.length) {
+            el.innerHTML = '<span class="text-muted">请先添加或导入设备</span>';
+            importedToggle.checked = false;
+            importedToggle.disabled = true;
+            return;
+        }
+        importedToggle.disabled = importedParamCount === 0;
+        if (!importedToggle.dataset.touched) importedToggle.checked = false;
+        el.innerHTML = `<div class="target-summary">已选择 ${selected.length}/${devices.length} 台 · 导入参数 ${importedParamCount} 项</div>` +
+            devices.map((device, index) => renderTargetDeviceRow(device, index)).join('');
+    }).catch(error => {
+        document.getElementById('execDeviceList').innerHTML = `<span class="text-danger">读取设备失败: ${escapeHtml(error)}</span>`;
     });
 }
 
+function renderTargetDeviceRow(device, index) {
+    const statusIcon = device.online
+        ? '<i class="bi bi-check-circle text-success"></i>'
+        : '<i class="bi bi-x-circle text-danger"></i>';
+    const params = configVariables(device);
+    const paramHtml = device.selected
+        ? renderDeviceConfigParams(params)
+        : '';
+    return `<div class="target-device-row ${device.selected ? 'is-selected' : ''}">
+        <div class="target-device-main">
+            <input class="form-check-input target-device-cb" type="checkbox" id="cfg_dev_${index}" ${device.selected ? 'checked' : ''} onchange="toggleDeviceSelection(${index})">
+            <label class="target-device-label" for="cfg_dev_${index}">
+                <span class="target-device-ip">${escapeHtml(device.ip)}:${escapeHtml(device.port)}</span>
+                <span>${statusIcon}</span>
+                <span class="badge bg-dark border border-secondary">${params.length} 参数</span>
+            </label>
+        </div>
+        ${paramHtml}
+    </div>`;
+}
+
+function renderDeviceConfigParams(params) {
+    if (!params.length) {
+        return '<div class="target-param-empty">无导入配置参数</div>';
+    }
+    return `<div class="target-param-list">${params.map(([key, value]) => `
+        <div class="target-param-row">
+            <code>${escapeHtml(key)}</code>
+            <span>${escapeHtml(value)}</span>
+        </div>
+    `).join('')}</div>`;
+}
+
+function selectDevices(mode) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: mode})
+    }).then(r => r.json()).then(data => {
+        if (data.error) { showToast(data.error, 'danger'); return; }
+        refreshExecDevices();
+    }).catch(error => showToast('设备选择失败: ' + error, 'danger'));
+}
+
+function toggleDeviceSelection(index) {
+    fetch('/api/devices/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'toggle', index: index})
+    }).then(r => r.json()).then(data => {
+        if (data.error) { showToast(data.error, 'danger'); return; }
+        refreshExecDevices();
+    }).catch(error => showToast('设备选择失败: ' + error, 'danger'));
+}
+
 function startExecute() {
-    const selectedOnly = document.getElementById('selectedOnly').checked;
     const strategy = document.getElementById('execStrategy').value;
-    const cmdCbs = document.querySelectorAll('.cmd-cb:checked');
-    const cmds = Array.from(cmdCbs).map(c => c.value);
+    const useImportedParams = document.getElementById('useImportedParams').checked;
 
-    if (cmds.length === 0) { showToast('请选择至少一条命令', 'warning'); return; }
+    if (customCommands.length === 0 && !useImportedParams) {
+        showToast('请选择导入参数或加入至少一条配置', 'warning');
+        return;
+    }
 
-    // 修改执行状态提示
     document.getElementById('execStatus').innerHTML = '<span class="text-warning">正在执行...</span>';
     document.getElementById('execProgress').style.display = 'block';
     document.getElementById('execBar').style.width = '0%';
     document.getElementById('execPercent').textContent = '0%';
     document.getElementById('execMsg').textContent = '启动执行...';
-    document.getElementById('execResults').style.display = 'none';
+    document.getElementById('execStartBtn').disabled = true;
+    document.getElementById('execStopBtn').disabled = false;
+    execRenderedRows = {};
 
     fetch('/api/execute/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            selected_only: selectedOnly,
             strategy: strategy,
-            commands: cmds,
+            commands: [],
+            custom_commands: customCommands,
+            use_imported_params: useImportedParams
         })
-    }).then(r=>r.json()).then(d=>{
-        if (d.error) { showToast(d.error, 'danger'); document.getElementById('execStatus').innerHTML = '<span class="text-danger">' + d.error + '</span>'; return; }
+    }).then(r => r.json()).then(d => {
+        if (d.error) {
+            showToast(d.error, 'danger');
+            document.getElementById('execStatus').innerHTML = '<span class="text-danger">' + d.error + '</span>';
+            document.getElementById('execStartBtn').disabled = false;
+            document.getElementById('execStopBtn').disabled = true;
+            return;
+        }
         showToast(d.message, 'success');
-        // 开始轮询进度
         if (execPollInterval) clearInterval(execPollInterval);
-        execPollInterval = setInterval(pollExecProgress, 500);
+        execPollInterval = setInterval(pollExecProgress, 600);
+        pollExecProgress();
+        loadExecutionLogs();
+    }).catch(error => {
+        showToast('启动执行失败: ' + error, 'danger');
+        document.getElementById('execStartBtn').disabled = false;
+        document.getElementById('execStopBtn').disabled = true;
     });
 }
 
+function stopExecute() {
+    document.getElementById('execStopBtn').disabled = true;
+    document.getElementById('execStatus').innerHTML = '<span class="text-warning">正在停止...</span>';
+    document.getElementById('execMsg').textContent = '正在停止...';
+    fetch('/api/execute/stop', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                showToast(d.error, 'danger');
+                document.getElementById('execStopBtn').disabled = false;
+                return;
+            }
+            showToast(d.message || '已请求停止配置执行', 'warning');
+        })
+        .catch(error => {
+            showToast('停止失败: ' + error, 'danger');
+            document.getElementById('execStopBtn').disabled = false;
+        });
+}
+
 function pollExecProgress() {
-    fetch('/api/execute/status').then(r=>r.json()).then(s=>{
+    fetch('/api/execute/status').then(r => r.json()).then(s => {
         const p = s.progress || {};
         const pc = p.percent || 0;
         document.getElementById('execBar').style.width = pc + '%';
         document.getElementById('execPercent').textContent = pc + '%';
-        document.getElementById('execMsg').textContent = p.message || '执行中...';
+        document.getElementById('execMsg').textContent = p.message || (s.stop_requested ? '正在停止...' : '执行中...');
+        updateExecRows(s.devices || []);
+        loadExecutionLogs();
 
-        if (s.completed) {
+        if (s.completed || s.stopped) {
             clearInterval(execPollInterval);
             execPollInterval = null;
-            document.getElementById('execStatus').innerHTML = '<span class="text-success">执行完成</span>';
+            document.getElementById('execStartBtn').disabled = false;
+            document.getElementById('execStopBtn').disabled = true;
+            document.getElementById('execStatus').innerHTML = s.stopped
+                ? '<span class="text-warning">已停止</span>'
+                : '<span class="text-success">执行完成</span>';
             loadResults();
-        } else if (!s.running) {
-            clearInterval(execPollInterval);
-            execPollInterval = null;
-            document.getElementById('execStatus').innerHTML = '<span class="text-muted">已停止</span>';
         }
+    }).catch(() => {
+        clearInterval(execPollInterval);
+        execPollInterval = null;
     });
+}
+
+function updateExecRows(devices) {
+    if (!devices.length) return;
+    const tbody = document.getElementById('resultTableBody');
+    const rows = devices.map(device => {
+        const key = `${device.index}`;
+        const prev = execRenderedRows[key] || {};
+        const result = device.result || prev.result || {};
+        execRenderedRows[key] = device;
+        const status = device.status || '--';
+        return `<tr>
+            <td>${escapeHtml(device.ip || '--')}</td>
+            <td>${result.total_commands || 0}</td>
+            <td class="text-success">${result.success_commands || 0}</td>
+            <td class="text-danger">${result.failed_commands || 0}</td>
+            <td>${(result.total_time || 0).toFixed(1)}</td>
+            <td>${escapeHtml(status)}</td>
+            <td><small class="text-muted">${escapeHtml(device.last_message || '')}</small></td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = rows || '<tr><td colspan="7" class="text-center text-muted">等待执行</td></tr>';
 }
 
 function loadResults() {
-    fetch('/api/execute/results').then(r=>r.json()).then(d => {
+    fetch('/api/execute/results').then(r => r.json()).then(d => {
         if (d.error) { showToast(d.error, 'warning'); return; }
-        const results = d.results || [];
-        const report = d.report;
-        if (report) {
-            showReportToast(report);
+        updateExecRows(d.devices || []);
+        if (d.stopped) {
+            showToast('配置已停止，已显示部分结果', 'warning');
+            document.getElementById('execMsg').textContent = '已停止';
+        } else if (d.report) {
+            showReportToast(d.report);
         }
-        renderResults(results);
-        document.getElementById('execResults').style.display = 'block';
+        loadExecutionLogs();
     });
-}
-
-function renderResults(results) {
-    const tbody = document.getElementById('resultTableBody');
-    if (results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">无结果</td></tr>';
-        return;
-    }
-    let html = '';
-    results.forEach(r => {
-        const status = r.success ? '<span class="badge bg-success">成功</span>' : '<span class="badge bg-danger">失败</span>';
-        html += `<tr>
-            <td>${r.ip || '--'}</td>
-            <td>${r.total_commands || 0}</td>
-            <td class="text-success">${r.success_commands || 0}</td>
-            <td class="text-danger">${r.failed_commands || 0}</td>
-            <td>${(r.total_time || 0).toFixed(1)}</td>
-            <td>${status}</td>
-        </tr>`;
-    });
-    tbody.innerHTML = html;
 }
 
 function showReportToast(report) {
@@ -222,10 +442,36 @@ function showReportToast(report) {
     const msg = `执行完成: ${overview.成功数 || 0}成功 / ${overview.失败数 || 0}失败, 成功率${overview.成功率 || 0}%`;
     showToast(msg, 'success');
     document.getElementById('execMsg').textContent = msg;
+    document.getElementById('execResultSummary').textContent = msg;
 }
 
-loadCommands();
+function loadExecutionLogs() {
+    fetch('/api/logs?type=buffer&lines=120').then(r => r.json()).then(data => {
+        const logs = data.logs || [];
+        const el = document.getElementById('execLogList');
+        if (!logs.length) {
+            el.innerHTML = '<div class="text-muted small">暂无日志</div>';
+            return;
+        }
+        el.innerHTML = logs.map(log => `
+            <div class="execution-log-row level-${escapeHtml(String(log.level || '').toLowerCase())}">
+                <span>${escapeHtml(log.time || '')}</span>
+                <strong>${escapeHtml(log.level || '')}</strong>
+                <p>${escapeHtml(log.message || '')}</p>
+            </div>
+        `).join('');
+        el.scrollTop = el.scrollHeight;
+    });
+}
+
+loadSetOptions();
+renderCustomCommands();
+loadExecutionLogs();
+document.getElementById('useImportedParams').addEventListener('change', function() {
+    this.dataset.touched = '1';
+});
 setInterval(refreshExecDevices, 3000);
+logPollInterval = setInterval(loadExecutionLogs, 3000);
 refreshExecDevices();
 </script>
 {% endblock %}

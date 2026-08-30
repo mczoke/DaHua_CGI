@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# V10.0 - CGI 命令扩展: 告警/智能分析/设备管理命令 + 参数库扩展
+# V10.1 - CGI 命令参考扩展: 包含设备实测的查询模板与返回字段
 
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -27,12 +28,319 @@ class CGIReferenceManager:
         "Alarm":            "告警管理",
         "SmartAnalysis":    "智能分析",
         "DeviceConfig":     "设备配置管理",
+        "DeviceVerified":   "设备实测 CGI 范本",
     }
 
     # ========== CGI 命令参考（从 ConfigManager 加载） ==========
 
     _CGI_COMMANDS_LOADED = False
     CGI_COMMANDS: List[Dict] = []
+
+    VERIFIED_GETCONFIG_TEMPLATES: List[Dict] = [
+        {
+            "name": "GetVerifiedGeneralConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取通用配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=General",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "General.LocalNo",
+                "General.LockLoginEnable",
+                "General.LockLoginTimes",
+                "General.LoginFailLockTime",
+                "General.MachineName",
+                "General.MaxOnlineTime",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "General"},
+            ],
+        },
+        {
+            "name": "GetVerifiedNetworkConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取 eth0 网络配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=Network",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "Network.DefaultInterface",
+                "Network.Domain",
+                "Network.Hostname",
+                "Network.eth0.DefaultGateway",
+                "Network.eth0.DhcpEnable",
+                "Network.eth0.DnsAutoGet",
+                "Network.eth0.DnsServers[0]",
+                "Network.eth0.DnsServers[1]",
+                "Network.eth0.EnableDhcpReservedIP",
+                "Network.eth0.IPAddress",
+                "Network.eth0.MTU",
+                "Network.eth0.PhysicalAddress",
+                "Network.eth0.SubnetMask",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "Network"},
+            ],
+        },
+        {
+            "name": "GetVerifiedEncodeConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取主码流、辅码流和抓图编码配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=Encode",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "Encode[0].MainFormat[{stream}].Video.{BitRate,BitRateControl,Compression,FPS,GOP,Height,Width,Profile,Quality,Priority}",
+                "Encode[0].MainFormat[{stream}].Audio.{Bitrate,Channels[0],Compression,Depth,Frequency,Mode,Pack}",
+                "Encode[0].ExtraFormat[{stream}].Video.{BitRate,BitRateControl,Compression,FPS,GOP,Height,Width,Profile,Quality,Priority}",
+                "Encode[0].ExtraFormat[{stream}].Audio.{Bitrate,Channels[0],Compression,Depth,Frequency,Pack}",
+                "Encode[0].SnapFormat[{stream}].Video.{BitRate,BitRateControl,Compression,FPS,GOP,Height,Width,Profile,Quality,Priority}",
+                "Encode[0].{MainFormat,ExtraFormat,SnapFormat}[{stream}].{VideoEnable,AudioEnable}",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "Encode"},
+            ],
+        },
+        {
+            "name": "GetVerifiedVideoWidgetConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取 OSD、通道标题、自定义标题和视频边界配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=VideoWidget",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "VideoWidget[0].ChannelTitle.{EncodeBlend,PreviewBlend,Rect[0..3],FrontColor[0..3],BackColor[0..3]}",
+                "VideoWidget[0].CustomTitle[{index}].{EncodeBlend,PreviewBlend,Rect[0..3],Text,TextAlign,FrontColor[0..3],BackColor[0..3]}",
+                "VideoWidget[0].UserDefinedTitle[0].{EncodeBlend,PreviewBlend,Rect[0..3],Text,TextAlign}",
+                "VideoWidget[0].TimeTitle.{EncodeBlend,PreviewBlend,Rect[0..3],ShowWeek,WeekPosition}",
+                "VideoWidget[0].VideoBoundary[0..3]",
+                "VideoWidget[0].{FontColorType,FontSize,FontSizeScale,WideHeightRatio}",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "VideoWidget"},
+            ],
+        },
+        {
+            "name": "GetVerifiedRecordModeConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取录像模式配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=RecordMode",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "RecordMode[0].Mode",
+                "RecordMode[0].ModeExtra1",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "RecordMode"},
+            ],
+        },
+        {
+            "name": "GetVerifiedVideoInModeConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取视频输入模式和按周时段配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=VideoInMode",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "VideoInMode[0].Config[0]",
+                "VideoInMode[0].Mode",
+                "VideoInMode[0].TimeSection[{day}][{period}]",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "VideoInMode"},
+            ],
+        },
+        {
+            "name": "GetVerifiedMotionDetectConfig",
+            "module": "DeviceVerified",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "实测获取移动侦测、联动、计划和区域配置",
+            "query_url": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect",
+            "set_url_template": "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi?action=setConfig&{parameter}={value}",
+            "verified": True,
+            "response_fields": [
+                "MotionDetect[0].{Enable,Level,OsdTwinkleEnable,PirMotionLevel,PtzManualEnable}",
+                "MotionDetect[0].MotionDetectWindow[{index}].{Id,Name,Region[0..17],Sensitive,Threshold,Window[0..3]}",
+                "MotionDetect[0].EventHandler.{AlarmOutEnable,BeepEnable,Delay,Dejitter,MailEnable,MessageEnable,RecordEnable,RecordLatch,SnapshotEnable,SnapshotTimes}",
+                "MotionDetect[0].EventHandler.{TimeSection,LightingLink.WhiteLightTimeSection}[{day}][{period}]",
+                "MotionDetect[0].EventHandler.PtzLink[0][{index}]",
+            ],
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "getConfig"},
+                {"name": "name", "type": "string", "required": True, "default": "MotionDetect"},
+            ],
+        },
+    ]
+
+    VERIFIED_SETCONFIG_OPTIONS: List[Dict] = [
+        {
+            "module": "DeviceConfig",
+            "parameter": "General.MachineName",
+            "type": "string",
+            "description": "设备名称",
+            "example": "Camera-01",
+        },
+        {
+            "module": "Network",
+            "parameter": "Network.eth0.DhcpEnable",
+            "type": "bool",
+            "description": "eth0 DHCP 开关",
+            "example": "true",
+        },
+        {
+            "module": "Network",
+            "parameter": "Network.eth0.IPAddress",
+            "type": "string",
+            "description": "eth0 IPv4 地址",
+            "example": "10.17.1.62",
+        },
+        {
+            "module": "Network",
+            "parameter": "Network.eth0.SubnetMask",
+            "type": "string",
+            "description": "eth0 子网掩码",
+            "example": "255.255.255.0",
+        },
+        {
+            "module": "Network",
+            "parameter": "Network.eth0.DefaultGateway",
+            "type": "string",
+            "description": "eth0 默认网关",
+            "example": "10.17.1.1",
+        },
+        {
+            "module": "Network",
+            "parameter": "Network.eth0.DnsServers[0]",
+            "type": "string",
+            "description": "首选 DNS",
+            "example": "223.5.5.5",
+        },
+        {
+            "module": "Encode",
+            "parameter": "Encode[0].MainFormat[0].Video.Compression",
+            "type": "string",
+            "description": "主码流编码格式",
+            "example": "H.265",
+        },
+        {
+            "module": "Encode",
+            "parameter": "Encode[0].MainFormat[0].Video.BitRate",
+            "type": "int",
+            "description": "主码流码率",
+            "example": "2048",
+        },
+        {
+            "module": "Encode",
+            "parameter": "Encode[0].MainFormat[0].Video.FPS",
+            "type": "int",
+            "description": "主码流帧率",
+            "example": "25",
+        },
+        {
+            "module": "Encode",
+            "parameter": "Encode[0].MainFormat[0].Video.GOP",
+            "type": "int",
+            "description": "主码流 GOP",
+            "example": "50",
+        },
+        {
+            "module": "VideoWidget",
+            "parameter": "VideoWidget[0].ChannelTitle.EncodeBlend",
+            "type": "bool",
+            "description": "通道标题编码叠加",
+            "example": "true",
+        },
+        {
+            "module": "VideoWidget",
+            "parameter": "VideoWidget[0].ChannelTitle.PreviewBlend",
+            "type": "bool",
+            "description": "通道标题预览叠加",
+            "example": "true",
+        },
+        {
+            "module": "VideoWidget",
+            "parameter": "VideoWidget[0].ChannelTitle.Rect[0]",
+            "type": "int",
+            "description": "通道标题矩形左边界",
+            "example": "5259",
+        },
+        {
+            "module": "VideoWidget",
+            "parameter": "VideoWidget[0].CustomTitle[0].Text",
+            "type": "string",
+            "description": "自定义标题文字",
+            "example": "Camera-01",
+        },
+        {
+            "module": "VideoWidget",
+            "parameter": "VideoWidget[0].CustomTitle[0].EncodeBlend",
+            "type": "bool",
+            "description": "自定义标题编码叠加",
+            "example": "true",
+        },
+        {
+            "module": "RecordMode",
+            "parameter": "RecordMode[0].Mode",
+            "type": "int",
+            "description": "录像模式",
+            "example": "0",
+        },
+        {
+            "module": "VideoInMode",
+            "parameter": "VideoInMode[0].Mode",
+            "type": "int",
+            "description": "视频输入模式",
+            "example": "0",
+        },
+        {
+            "module": "MotionDetect",
+            "parameter": "MotionDetect[0].Enable",
+            "type": "bool",
+            "description": "移动侦测开关",
+            "example": "true",
+        },
+        {
+            "module": "MotionDetect",
+            "parameter": "MotionDetect[0].Level",
+            "type": "int",
+            "description": "移动侦测等级",
+            "example": "3",
+        },
+    ]
 
     @classmethod
     def _ensure_commands_loaded(cls) -> None:
@@ -52,9 +360,41 @@ class CGIReferenceManager:
 
     @staticmethod
     def _normalize_commands(raw_commands: List[Dict]) -> List[Dict]:
-        """将 config.yaml 格式的命令转换为标准格式（添加空返回值字段等）"""
+        """将结构化命令和旧版 key=value 命令转换为标准参考格式。"""
         result = []
         for cmd in raw_commands:
+            if isinstance(cmd, str):
+                parameter, separator, value = cmd.partition("=")
+                result.append({
+                    "name": f"SetConfig:{parameter}" if parameter else "SetConfig",
+                    "module": "DeviceConfig",
+                    "path": "/cgi-bin/configManager.cgi",
+                    "method": "GET",
+                    "auth": "digest",
+                    "timeout": 30,
+                    "description": "用户配置的 setConfig 命令",
+                    "raw_command": cmd,
+                    "params": [
+                        {
+                            "name": "action",
+                            "type": "string",
+                            "required": True,
+                            "default": "setConfig",
+                        },
+                        {
+                            "name": parameter,
+                            "type": "string",
+                            "required": bool(separator),
+                            "default": value,
+                        },
+                    ],
+                })
+                continue
+
+            if not isinstance(cmd, dict):
+                logging.warning("忽略不支持的 CGI 命令格式: %r", cmd)
+                continue
+
             normalized = dict(cmd)
             # 确保所有字段存在
             normalized.setdefault("method", "GET")
@@ -64,6 +404,121 @@ class CGIReferenceManager:
             normalized.setdefault("params", [])
             result.append(normalized)
         return result
+
+    @classmethod
+    def get_verified_getconfig_templates(cls) -> List[Dict]:
+        """返回已在授权设备上验证成功的只读 getConfig 查询范本。"""
+        return [dict(template) for template in cls.VERIFIED_GETCONFIG_TEMPLATES]
+
+    @classmethod
+    def get_verified_setconfig_options(cls) -> List[Dict]:
+        """返回可选择的实测 setConfig 参数和值示例。"""
+        return [dict(option) for option in cls.VERIFIED_SETCONFIG_OPTIONS]
+
+    @staticmethod
+    def get_query_library() -> List[Dict]:
+        """按参数库模块生成可选择的 getConfig 查询库。"""
+        reference = CGIReferenceManager.load_reference()
+        params = reference.get("参数库", [])
+        templates = CGIReferenceManager.get_verified_getconfig_templates()
+        by_module: Dict[str, Dict] = {}
+
+        for template in templates:
+            module = template["params"][1]["default"]
+            by_module[module] = {
+                "name": template.get("name", f"Get{module}Config"),
+                "module": module,
+                "description": template.get("description", f"获取 {module} 配置"),
+                "query_url": template["query_url"],
+                "verified": template.get("verified", False),
+                "params": [],
+                "response_fields": template.get("response_fields", []),
+            }
+
+        for param in params:
+            module = CGIReferenceManager._get_config_name_from_param(param.get("param", ""))
+            if not module:
+                module = CGIReferenceManager._module_to_config_name(param.get("module", "Unknown"))
+            if module not in by_module:
+                by_module[module] = {
+                    "name": f"Get{module}Config",
+                    "module": module,
+                    "description": f"获取 {module} 配置",
+                    "query_url": (
+                        "http://{{IP}}:{{port}}/cgi-bin/configManager.cgi"
+                        f"?action=getConfig&name={module}"
+                    ),
+                    "verified": False,
+                    "params": [],
+                    "response_fields": [],
+                }
+            by_module[module]["params"].append(dict(param))
+
+        for endpoint in reference.get("只读CGI端点", []):
+            module = endpoint.get("name", "ReadOnly")
+            by_module[module] = {
+                "name": endpoint.get("name", module),
+                "module": module,
+                "description": endpoint.get("description", module),
+                "query_url": endpoint.get("query_url", ""),
+                "verified": endpoint.get("verified", False),
+                "params": [],
+                "response_fields": [
+                    f"{field.get('name', '')} ({field.get('type', 'string')})"
+                    for field in endpoint.get("fields", [])
+                ],
+                "endpoint_type": "readonly",
+            }
+
+        def sort_key(item: Dict) -> tuple:
+            verified_rank = 0 if item.get("verified") else 1
+            endpoint_rank = 1 if item.get("endpoint_type") == "readonly" else 0
+            return verified_rank, endpoint_rank, item.get("module", "")
+
+        return sorted(by_module.values(), key=sort_key)
+
+    @staticmethod
+    def get_setconfig_library() -> List[Dict]:
+        """从参数库生成可配置参数选项。"""
+        reference = CGIReferenceManager.load_reference()
+        options = []
+        seen = set()
+        for param in reference.get("参数库", []):
+            parameter = param.get("param", "")
+            if not parameter or parameter in seen:
+                continue
+            seen.add(parameter)
+            options.append({
+                "module": CGIReferenceManager._get_config_name_from_param(parameter)
+                    or CGIReferenceManager._module_to_config_name(param.get("module", "Unknown")),
+                "parameter": parameter,
+                "type": param.get("type", "string"),
+                "description": param.get("desc", ""),
+                "example": param.get("example", param.get("default", "")),
+                "default": param.get("default", ""),
+            })
+        return options
+
+    @staticmethod
+    def _get_config_name_from_param(parameter: str) -> str:
+        """从 table 风格参数名推导 getConfig 的 name。"""
+        root = parameter.split(".", 1)[0].strip()
+        if not root:
+            return ""
+        root = re.sub(r"\[.*\]$", "", root)
+        if root.lower() == "general":
+            return "General"
+        return root
+
+    @staticmethod
+    def _module_to_config_name(module: str) -> str:
+        if module == "DeviceConfig":
+            return "General"
+        if module == "System":
+            return "General"
+        if module == "ChannelTitle" or module == "VideoBoundary":
+            return "VideoWidget"
+        return module
 
     @staticmethod
     def get_command_list():
@@ -492,12 +947,13 @@ class CGIReferenceManager:
         reference_file = CGIReferenceManager.get_reference_path()
         default_reference_data = CGIReferenceManager.get_default_reference_data()
         default_reference = {
-            "version": "10.0",
+            "version": "10.1",
             "last_updated": datetime.now().strftime("%Y-%m-%d"),
             "total_parameters": len(default_reference_data),
             "total_commands": len(CGIReferenceManager.CGI_COMMANDS),
             "参数库": default_reference_data,
             "CGI命令参考": CGIReferenceManager.CGI_COMMANDS,
+            "设备实测查询范本": CGIReferenceManager.get_verified_getconfig_templates(),
             "模块分类": CGIReferenceManager.get_module_categories(),
         }
         try:
@@ -506,7 +962,7 @@ class CGIReferenceManager:
                 return default_reference
             with open(reference_file, "r", encoding="utf-8") as f:
                 reference = json.load(f)
-            reference["version"] = "10.0"
+            reference["version"] = "10.1"
             reference["last_updated"] = datetime.now().strftime("%Y-%m-%d")
 
             # 确保参数库非空
@@ -520,6 +976,9 @@ class CGIReferenceManager:
             if "CGI命令参考" not in reference or not reference["CGI命令参考"]:
                 reference["CGI命令参考"] = CGIReferenceManager.CGI_COMMANDS
             reference["total_commands"] = len(reference.get("CGI命令参考", []))
+
+            if "设备实测查询范本" not in reference or not reference["设备实测查询范本"]:
+                reference["设备实测查询范本"] = CGIReferenceManager.get_verified_getconfig_templates()
 
             # 确保模块分类完整
             categories = reference.get("模块分类", [])
@@ -539,13 +998,16 @@ class CGIReferenceManager:
             reference_file = CGIReferenceManager.get_reference_path()
             if "参数库" not in reference or not reference["参数库"]:
                 reference["参数库"] = CGIReferenceManager.get_default_reference_data()
-            reference["version"] = "10.0"
+            reference["version"] = "10.1"
             reference["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             reference["total_parameters"] = len(reference.get("参数库", []))
 
             if "CGI命令参考" not in reference or not reference["CGI命令参考"]:
                 reference["CGI命令参考"] = CGIReferenceManager.CGI_COMMANDS
             reference["total_commands"] = len(reference.get("CGI命令参考", []))
+
+            if "设备实测查询范本" not in reference or not reference["设备实测查询范本"]:
+                reference["设备实测查询范本"] = CGIReferenceManager.get_verified_getconfig_templates()
 
             if "模块分类" not in reference or not reference["模块分类"]:
                 reference["模块分类"] = CGIReferenceManager.get_module_categories()

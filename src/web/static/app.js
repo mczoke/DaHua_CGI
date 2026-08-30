@@ -4,13 +4,15 @@ function showToast(msg, type = 'info') {
     const container = document.getElementById('toastContainer') || (() => {
         const c = document.createElement('div');
         c.id = 'toastContainer';
-        c.style.cssText = 'position:fixed;top:60px;right:20px;z-index:9999';
+        c.className = 'app-toast-container';
+        c.setAttribute('aria-live', 'polite');
+        c.setAttribute('aria-atomic', 'true');
         document.body.appendChild(c);
         return c;
     })();
     const t = document.createElement('div');
     t.className = `toast align-items-center text-bg-${type} border-0 show`;
-    t.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    t.innerHTML = `<div class="d-flex"><div class="toast-body">${escapeHtml(msg)}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button></div>`;
     container.appendChild(t);
     setTimeout(() => t.remove(), 4000);
 }

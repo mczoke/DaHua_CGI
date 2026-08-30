@@ -112,9 +112,10 @@ class TestLoadReference:
             with patch.object(CGIReferenceManager, 'get_config_directory',
                               return_value=tmp):
                 ref = CGIReferenceManager.load_reference()
-                assert ref['version'] == '10.0'
+                assert ref['version'] == '10.1'
                 assert len(ref['参数库']) > 10
                 assert len(ref['模块分类']) > 0
+                assert len(ref['设备实测查询范本']) == 7
 
     def test_file_exists_parses_correctly(self):
         """When reference file exists with valid content."""
@@ -133,7 +134,7 @@ class TestLoadReference:
                 with patch.object(CGIReferenceManager, 'get_config_directory',
                                   return_value=tmp):
                     ref = CGIReferenceManager.load_reference()
-                    assert ref['version'] == '10.0'
+                    assert ref['version'] == '10.1'
                     assert len(ref['参数库']) == 2
 
     def test_file_empty_params_fills_default(self):
@@ -186,7 +187,7 @@ class TestLoadReference:
                 with patch.object(CGIReferenceManager, 'get_config_directory',
                                   return_value=tmp):
                     ref = CGIReferenceManager.load_reference()
-                    assert ref['version'] == '10.0'
+                    assert ref['version'] == '10.1'
                     assert len(ref['参数库']) > 10
 
     def test_oserror_falls_back_to_default(self):
@@ -216,7 +217,7 @@ class TestLoadReference:
                                   return_value=tmp):
                     with patch('builtins.open', side_effect=mock_open):
                         ref = CGIReferenceManager.load_reference()
-                        assert ref['version'] == '10.0'
+                        assert ref['version'] == '10.1'
                         assert len(ref['参数库']) > 10
 
 
@@ -240,7 +241,7 @@ class TestSaveReference:
                     assert os.path.exists(ref_path)
                     with open(ref_path) as f:
                         saved = json.load(f)
-                    assert saved['version'] == '10.0'
+                    assert saved['version'] == '10.1'
 
     def test_save_fills_missing_params(self):
         """Save with missing 参数库 fills defaults."""
@@ -425,7 +426,62 @@ class TestCGICommands:
         assert 'DeviceConfig' in CGIReferenceManager.DAHUA_MODULES
 
     def test_dahua_modules_total_count(self):
-        assert len(CGIReferenceManager.DAHUA_MODULES) == 11
+        assert len(CGIReferenceManager.DAHUA_MODULES) == 12
+
+    def test_verified_getconfig_templates_are_complete(self):
+        templates = CGIReferenceManager.get_verified_getconfig_templates()
+        names = {template['name'] for template in templates}
+        assert len(templates) == 7
+        assert 'GetVerifiedVideoWidgetConfig' in names
+        for template in templates:
+            assert template['verified'] is True
+            assert template['query_url'].endswith(f"name={template['params'][1]['default']}")
+            assert template['set_url_template'].endswith("&{parameter}={value}")
+            assert template['response_fields']
+
+    def test_query_library_merges_reference_params(self):
+        library = CGIReferenceManager.get_query_library()
+        by_module = {item['module']: item for item in library}
+        assert len(by_module['VideoWidget']['params']) >= 200
+        assert len(by_module['Encode']['params']) >= 200
+        assert len(by_module['MotionDetect']['params']) >= 200
+        assert len(by_module['Record']['params']) >= 50
+        assert len(by_module['NAS']['params']) >= 20
+        assert by_module['General']['verified'] is True
+        assert by_module['GetDeviceType']['endpoint_type'] == 'readonly'
+        assert by_module['GetEncodeCaps']['response_fields']
+
+    def test_setconfig_library_uses_reference_params(self):
+        options = CGIReferenceManager.get_setconfig_library()
+        parameters = {option['parameter'] for option in options}
+        assert len(options) >= 1000
+        assert 'VideoWidget[0].ChannelTitle.EncodeBlend' in parameters
+        assert 'General.MachineName' in parameters
+        assert 'Record[0].Stream' in parameters
+
+    def test_normalize_legacy_setconfig_command(self):
+        commands = CGIReferenceManager._normalize_commands(
+            ["VideoWidget[0].ChannelTitle.EncodeBlend=true"]
+        )
+        assert commands == [{
+            "name": "SetConfig:VideoWidget[0].ChannelTitle.EncodeBlend",
+            "module": "DeviceConfig",
+            "path": "/cgi-bin/configManager.cgi",
+            "method": "GET",
+            "auth": "digest",
+            "timeout": 30,
+            "description": "用户配置的 setConfig 命令",
+            "raw_command": "VideoWidget[0].ChannelTitle.EncodeBlend=true",
+            "params": [
+                {"name": "action", "type": "string", "required": True, "default": "setConfig"},
+                {
+                    "name": "VideoWidget[0].ChannelTitle.EncodeBlend",
+                    "type": "string",
+                    "required": True,
+                    "default": "true",
+                },
+            ],
+        }]
 
     @patch.object(CGIReferenceManager, 'get_reference_path')
     @patch.object(CGIReferenceManager, 'get_config_directory')
@@ -461,4 +517,4 @@ class TestCGICommands:
                 saved = json.load(f)
             assert 'CGI命令参考' in saved
             assert len(saved['CGI命令参考']) > 0
-            assert saved['version'] == '10.0'
+            assert saved['version'] == '10.1'
