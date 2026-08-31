@@ -1,9 +1,29 @@
 /* DaHua_CGI Web UI — 自定义样式 */
 
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
 body {
     background: #0d1117;
     color: #c9d1d9;
-    min-height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 系统框架：导航栏固定，主内容区占满剩余高度并在框内滚动 */
+.navbar {
+    flex-shrink: 0;
+}
+
+.app-main {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
     overflow-x: hidden;
 }
 
@@ -141,24 +161,26 @@ pre {
 }
 
 .result-scroll {
-    max-height: 52vh;
     overflow: auto;
 }
 
 .ops-page {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
     min-width: 0;
-    padding-bottom: 16px;
+    height: 100%;
+    padding-bottom: 4px;
+    overflow: hidden;
 }
 
 .ops-top-grid {
+    flex: 2 2 0;
+    min-height: 0;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
     align-items: stretch;
-    height: min(720px, calc(100vh - 132px));
-    min-height: 480px;
     min-width: 0;
 }
 
@@ -222,8 +244,10 @@ pre {
 }
 
 .ops-workspace-panel {
-    overflow-y: auto;
-    scrollbar-gutter: stable;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
  .ops-library-panel {
@@ -255,7 +279,11 @@ pre {
 }
 
 .ops-results-panel {
+    flex: 1 1 0;
+    min-height: 0;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .ops-results-panel .table {
@@ -263,10 +291,26 @@ pre {
 }
 
 .ops-bottom-grid {
+    flex: 1 1 0;
+    min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
-    align-items: start;
+    align-items: stretch;
+}
+
+.ops-bottom-grid > .result-scroll {
+    grid-column: span 2;
+    min-height: 0;
+}
+.ops-bottom-grid > div:last-child {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.ops-results-panel > .result-scroll {
+    flex: 1 1 0;
+    min-height: 0;
 }
 
 .ops-subheading {
@@ -301,9 +345,11 @@ pre {
 
 .target-device-main {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
+    overflow-x: auto;
 }
 
 .target-device-label {
@@ -311,9 +357,8 @@ pre {
     align-items: center;
     gap: 8px;
     min-width: 0;
-    width: 100%;
+    flex: 0 1 auto;
     font-size: 0.86rem;
-    overflow: hidden;
 }
 
 .target-device-ip {
@@ -358,7 +403,55 @@ pre {
     margin: 4px 0 0 28px;
     color: #8b949e;
     font-size: 0.78rem;
+} .target-param-inline {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
 }
+
+.target-param-sep {
+    color: #484f58;
+    flex: 0 0 auto;
+    user-select: none;
+}
+
+.target-param-inline::-webkit-scrollbar {
+    height: 4px;
+}
+.target-param-inline::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 2px;
+}
+
+.target-param-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    font-size: 0.74rem;
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    min-width: 0;
+}
+
+.target-param-chip code {
+    color: #79c0ff;
+    overflow-wrap: anywhere;
+}
+
+.target-param-chip em {
+    color: #e6edf3;
+    font-style: normal;
+    overflow-wrap: anywhere;
+}
+
+
 
 .config-library-select {
     min-height: 220px;
@@ -391,8 +484,8 @@ pre {
 }
 
 .execution-log-list {
-    max-height: 52vh;
-    min-height: 180px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     border: 1px solid #30363d;
     border-radius: 6px;
@@ -441,17 +534,70 @@ pre {
     color: #d29922;
 }
 
-.command-textarea {
-    min-height: 150px;
-    resize: vertical;
+.pending-query-box {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px;
+    background: #0d1117;
 }
 
+.pending-query-box .pending-query-table {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pending-query-box .pending-query-table thead th {
+    background: #161b22;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex: 0 0 auto;
+}
+
+.pending-query-box .pending-query-table tbody {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: block;
+    overflow-y: auto;
+}
+
+.pending-query-box .pending-query-table tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.pending-query-box .pending-query-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 @media (max-width: 992px) {
+    .ops-page {
+        height: auto;
+        overflow: visible;
+        padding-bottom: 16px;
+    }
+
     .ops-top-grid,
     .ops-bottom-grid {
         grid-template-columns: 1fr;
         height: auto;
         min-height: 0;
+        flex: none;
+    }
+
+    .ops-results-panel {
+        flex: none;
     }
 
     .ops-panel {
@@ -517,4 +663,21 @@ pre {
     .target-param-row {
         font-size: 0.76rem;
     }
+}
+
+/* 配置执行页「使用导入参数」— 紧凑开关，跟随框内统一风格 */
+.use-imported-sm {
+    padding-left: 2.5em;
+}
+.use-imported-sm .form-check-input {
+    width: 2.2em;
+    height: 1.2em;
+    margin-left: -2.5em;
+    margin-top: 0.18em;
+    cursor: pointer;
+}
+.use-imported-sm .form-check-label {
+    font-size: 0.875rem;
+    color: #c9d1d9;
+    font-weight: 400;
 }

@@ -46,7 +46,27 @@
             </div>
 
             <h6 class="mb-2"><i class="bi bi-list-check"></i> 待查询 CGI</h6>
-            <textarea class="form-control bg-dark text-light command-textarea" id="queryCommands" rows="9" placeholder="从实测查询库加入，或每行输入一个命令/完整 URL"></textarea>
+            <div class="input-group input-group-sm mb-2">
+                <input class="form-control bg-dark text-light" id="queryCustomInput" placeholder="粘贴完整 URL 手动添加（可选）" autocomplete="off">
+                <button class="btn btn-outline-info btn-sm" type="button" onclick="addCustomQuery()"><i class="bi bi-plus-lg"></i> 添加</button>
+            </div>
+            <div class="pending-query-box">
+                <table class="table table-dark table-sm table-hover mb-0 sticky-head pending-query-table">
+                    <thead>
+                    <tr>
+                        <th style="width:34px"><input class="form-check-input" type="checkbox" id="pendingSelectAll" onchange="togglePendingSelectAll(this)"></th>
+                        <th>参数</th>
+                    </tr>
+                    </thead>
+                    <tbody id="pendingQueryBody">
+                        <tr><td colspan="2" class="text-center text-muted">从「实测查询库」加入，或手动添加</td></tr>
+                    </tbody>
+                </table>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-outline-danger btn-sm" id="deleteSelectedBtn" onclick="deleteSelectedPending()" disabled><i class="bi bi-trash"></i> 删除选中</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="clearPending()"><i class="bi bi-x-circle"></i> 清空</button>
+                </div>
+            </div>
 
             <div id="queryProgress" class="mt-3" style="display:none">
                 <div class="d-flex justify-content-between mb-1">
@@ -65,7 +85,7 @@
         </section>
     </div>
 
-    <section class="panel-box ops-panel ops-results-panel" id="queryResultSection" style="display:none">
+    <section class="panel-box ops-panel ops-results-panel" id="queryResultSection">
         <div class="ops-panel-header">
             <h6 class="mb-0"><i class="bi bi-table"></i> 查询结果</h6>
             <small class="text-muted">查询中会实时刷新</small>
@@ -73,7 +93,9 @@
         <div class="result-scroll">
             <table class="table table-dark table-sm table-hover table-bordered sticky-head" id="queryResultTable">
                 <thead id="queryResultHead"></thead>
-                <tbody id="queryResultBody"></tbody>
+                <tbody id="queryResultBody">
+                    <tr><td colspan="1" class="text-center text-muted">等待查询结果</td></tr>
+                </tbody>
             </table>
         </div>
     </section>
@@ -87,6 +109,7 @@ let queryData = [];
 let selectedDeviceCount = 0;
 let queryTemplates = [];
 let queryPollInterval = null;
+let pendingCommands = [];
 
 function refreshSelectedDevices() {
     fetch('/api/devices').then(r => r.json()).then(d => {
@@ -199,13 +222,87 @@ function updateQueryTemplateInfo() {
         <div class="mt-1">参数: ${(template.params || []).length} 个，返回字段摘要: ${(template.response_fields || []).length} 条</div>`;
 }
 
+function pendingDisplayName(cmd) {
+    if (cmd.startsWith('http://') || cmd.startsWith('https://')) {
+        try {
+            const u = new URL(cmd);
+            const name = u.searchParams.get('name');
+            if (name) return name;
+            const action = u.searchParams.get('action');
+            if (action) return action;
+            const seg = u.pathname.split('/').filter(Boolean).pop();
+            if (seg) return seg;
+        } catch (e) {}
+    }
+    if (cmd.includes('=')) return cmd.split('=').pop();
+    return cmd;
+}
+
+function renderPendingCommands() {
+    const tbody = document.getElementById('pendingQueryBody');
+    const selectAll = document.getElementById('pendingSelectAll');
+    if (!pendingCommands.length) {
+        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">暂无待查询命令</td></tr>';
+        if (selectAll) selectAll.checked = false;
+        syncPendingButtons();
+        return;
+    }
+    tbody.innerHTML = pendingCommands.map((cmd, idx) => `
+        <tr data-idx="${idx}">
+            <td><input class="form-check-input pending-check" type="checkbox" value="${idx}" onchange="syncPendingButtons()"></td>
+            <td class="small text-truncate" title="${escapeHtml(cmd)}">${escapeHtml(pendingDisplayName(cmd))}</td>
+        </tr>`).join('');
+    if (selectAll) selectAll.checked = document.querySelectorAll('.pending-check:checked').length === pendingCommands.length;
+    syncPendingButtons();
+}
+
+function syncPendingButtons() {
+    const selected = document.querySelectorAll('.pending-check:checked');
+    const btn = document.getElementById('deleteSelectedBtn');
+    btn.disabled = selected.length === 0;
+    const selectAll = document.getElementById('pendingSelectAll');
+    if (selectAll) selectAll.checked = pendingCommands.length > 0 && selected.length === pendingCommands.length;
+}
+
+function togglePendingSelectAll(el) {
+    document.querySelectorAll('.pending-check').forEach(cb => { cb.checked = el.checked; });
+    syncPendingButtons();
+}
+
+function addCustomQuery() {
+    const input = document.getElementById('queryCustomInput');
+    const cmd = input.value.trim();
+    if (!cmd) { showToast('请输入要添加的命令', 'warning'); return; }
+    addPendingCommand(cmd);
+    input.value = '';
+    renderPendingCommands();
+}
+
+function addPendingCommand(cmd) {
+    cmd = (cmd || '').trim();
+    if (!cmd) return;
+    if (!pendingCommands.includes(cmd)) pendingCommands.push(cmd);
+    renderPendingCommands();
+}
+
+function deleteSelectedPending() {
+    const selected = new Set(Array.from(document.querySelectorAll('.pending-check:checked'))
+        .map(cb => parseInt(cb.value, 10)));
+    pendingCommands = pendingCommands.filter((_, i) => !selected.has(i));
+    renderPendingCommands();
+}
+
+function clearPending() {
+    if (!pendingCommands.length) { showToast('没有可清空的命令', 'warning'); return; }
+    pendingCommands = [];
+    renderPendingCommands();
+    showToast('已清空待查询命令', 'info');
+}
+
 function insertSelectedQueryTemplate() {
     const template = selectedQueryTemplate();
     if (!template) { showToast('请选择一个查询范本', 'warning'); return; }
-    const input = document.getElementById('queryCommands');
-    const lines = input.value.split('\n').map(line => line.trim()).filter(Boolean);
-    if (!lines.includes(template.query_url)) lines.push(template.query_url);
-    input.value = lines.join('\n');
+    addPendingCommand(template.query_url);
     showToast('已加入查询命令', 'info');
 }
 
@@ -225,12 +322,11 @@ function showSelectedTemplateFields() {
 
 function startQuery() {
     if (selectedDeviceCount === 0) { showToast('请先选择设备', 'warning'); return; }
-    const commands = document.getElementById('queryCommands').value.trim().split('\n')
-        .map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const commands = pendingCommands.filter(l => l && !l.startsWith('#'));
     if (!commands.length) { showToast('请至少输入一个查询命令', 'warning'); return; }
 
     document.getElementById('queryProgress').style.display = 'block';
-    document.getElementById('queryResultSection').style.display = 'block';
+    document.getElementById('queryResultSection').style.display = 'flex';
     document.getElementById('queryBar').style.width = '0%';
     document.getElementById('queryPercent').textContent = '0%';
     document.getElementById('queryStatus').textContent = '查询中...';
@@ -317,7 +413,7 @@ function pollQueryStatus() {
 }
 
 function renderQueryResults() {
-    document.getElementById('queryResultSection').style.display = 'block';
+    document.getElementById('queryResultSection').style.display = 'flex';
     const thead = document.getElementById('queryResultHead');
     const tbody = document.getElementById('queryResultBody');
     if (!queryColumns.length) {

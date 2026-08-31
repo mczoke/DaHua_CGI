@@ -56,6 +56,7 @@ _execution_running = False
 _execution_completed = False
 _execution_stopped = False
 _execution_stop_requested = False
+_execution_device_ips: List[str] = []
 _progress_data: Dict = {"percent": 0, "message": "", "stats": {}}
 _log_buffer: List[Dict] = []
 _selected_commands: List[str] = []
@@ -114,6 +115,7 @@ def _reset_execution_state() -> None:
     _execution_running = False
     _execution_stopped = False
     _execution_stop_requested = False
+    _execution_device_ips = []
     _executor_results = []
     _aggregate_report = None
     _progress_data = {"percent": 0, "message": "", "stats": {}}
@@ -193,6 +195,15 @@ def _build_imported_config_commands(devices) -> List[str]:
             seen.add(parameter)
             commands.append(f"{parameter}={{{parameter}}}")
     return commands
+
+
+def _executed_device_snapshots() -> List[dict]:
+    """返回本次执行涉及的设备快照（未选中执行的不返回）。"""
+    return [
+        _serialize_device_snapshot(device)
+        for device in _device_loader.devices
+        if device.ip in _execution_device_ips
+    ]
 
 
 def _serialize_device_for_state(device) -> dict:
@@ -630,6 +641,7 @@ def api_execute_start():
     """开始执行配置"""
     global _executor, _executor_thread, _executor_start_time, _executor_results
     global _execution_running, _execution_completed, _execution_stopped, _execution_stop_requested
+    global _execution_device_ips
     global _aggregate_report, _progress_data
 
     if _execution_running:
@@ -653,6 +665,8 @@ def api_execute_start():
 
     if not devices:
         return jsonify({"error": "请先在设备管理页选择设备"}), 400
+
+    _execution_device_ips = [device.ip for device in devices]
 
     # 过滤命令
     all_commands = _config.get("cgi_commands", [])
@@ -785,7 +799,7 @@ def api_execute_status():
         "stop_requested": _execution_stop_requested,
         "progress": _progress_data,
         "results_count": len(_executor_results),
-        "devices": [_serialize_device_snapshot(device) for device in _device_loader.devices],
+        "devices": _executed_device_snapshots(),
     })
 
 
@@ -822,14 +836,14 @@ def api_execute_results():
             "error": "执行尚未完成",
             "running": True,
             "progress": _progress_data,
-            "devices": [_serialize_device_snapshot(device) for device in _device_loader.devices],
+            "devices": _executed_device_snapshots(),
         }), 200
     return jsonify({
         "results": _executor_results,
         "report": _aggregate_report,
         "completed": _execution_completed,
         "stopped": _execution_stopped,
-        "devices": [_serialize_device_snapshot(device) for device in _device_loader.devices],
+        "devices": _executed_device_snapshots(),
     })
 
 

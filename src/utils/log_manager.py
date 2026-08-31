@@ -4,6 +4,7 @@
 
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -131,7 +132,7 @@ class LogManager:
             header_str = str(headers) if len(str(headers)) < 2048 else str(headers)[:2048] + "…(截断)"
             log_entry = (
                 f"[{timestamp}] [CGI_REQUEST] 设备 {device_ip} 请求 {command_index}/{total_commands}\n"
-                f"  请求URL: {full_url}\n"
+                f"  请求URL: {self._redact_credentials(full_url)}\n"
                 f"  原始命令: {raw_command}\n"
                 f"  请求方法: {method}\n"
                 f"  认证方式: {auth_type}\n"
@@ -194,7 +195,7 @@ class LogManager:
             header_str = str(headers) if len(str(headers)) < 2048 else str(headers)[:2048] + "…(截断)"
             log_entry = (
                 f"[{timestamp}] [RAW_REQUEST] 设备 {device_ip} 原始请求 {command_index}/{total_commands}\n"
-                f"  完整URL: {full_url}\n"
+                f"  完整URL: {self._redact_credentials(full_url)}\n"
                 f"  原始命令: {raw_command}\n"
                 f"  认证方式: {auth_type}\n"
                 f"  请求头: {header_str}\n"
@@ -260,6 +261,18 @@ class LogManager:
         except Exception as e:
             self._logger.error(f"export_excel_results 失败: {e}")
             return None
+
+
+
+    _CRED_RE = re.compile(r'(://[^:@/\s]+:)[^@/]*@', re.IGNORECASE)
+
+    @staticmethod
+    def _redact_credentials(text):
+        """脱敏 URL 中内嵌的凭据：http://user:pass@host -> http://user:******@host"""
+        if not text:
+            return text
+        return LogManager._CRED_RE.sub(r'\1******@', text)
+
 
     # ---------- 日志文件快捷操作 ----------
 

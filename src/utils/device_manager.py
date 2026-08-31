@@ -30,6 +30,23 @@ from utils.async_executor import AsyncIOManager
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+def _encode_set_command(command):
+    """将 setConfig 命令构造为安全可用的 CGI 查询串。
+
+    关键点（借鉴实测设备兼容经验）：
+    - 参数键中的方括号保持字面量（[0] 不编码成 %5B），点号与下划线保留；
+    - 用字面 '=' 作为键值分隔符，值再做百分号编码（含中文/特殊字符）。
+    否则部分大华设备对 setConfig 返回 OK 却静默不生效。
+    """
+    if not isinstance(command, str):
+        command = str(command)
+    key, sep, value = command.partition("=")
+    if not sep:
+        # 无 '=' 的裸命令名：整体编码但保留中括号
+        return requests.utils.quote(command, safe="[]")
+    return requests.utils.quote(key, safe="[]") + "=" + requests.utils.quote(value, safe="")
+
+
 # ============================================================================
 # 数据类定义
 # ============================================================================
@@ -1308,7 +1325,7 @@ class ConfigExecutor:
             password = device.password if hasattr(device, 'password') else 'admin'
             
             base_url = f"http://{username}:{password}@{device.ip}:{device.port}/cgi-bin/configManager.cgi"
-            encoded_cmd = requests.utils.quote(command, safe='')
+            encoded_cmd = _encode_set_command(command)
             display_cmd = encoded_cmd.replace('%20', ' ')
             full_url = f"{base_url}?action=setConfig&{encoded_cmd}"
             display_url = f"http://{username}:****@{device.ip}:{device.port}/cgi-bin/configManager.cgi?action=setConfig&{display_cmd}"
@@ -1624,7 +1641,7 @@ class ConfigExecutor:
             
             # 构建完整的CGI请求URL
             base_url = f"http://{device.ip}:{device.port}/cgi-bin/configManager.cgi"
-            encoded_cmd = requests.utils.quote(command, safe='')
+            encoded_cmd = _encode_set_command(command)
             display_cmd = encoded_cmd.replace('%20', ' ')
             full_url = f"{base_url}?action=setConfig&{encoded_cmd}"
             display_url = f"{base_url}?action=setConfig&{display_cmd}"

@@ -344,18 +344,21 @@ class CgiQueryExecutor:
                     device.ip, device.port, device.username, device.password, cmd
                 )
                 parsed = result.get("parsed") or {}
-                row_data[col_name] = next(iter(parsed.values()), "") if len(parsed) == 1 else result.get("text", "")
-                if col_name not in all_columns_set:
-                    all_columns_set.add(col_name)
-                    _seen_command_cols.append(col_name)
-                # 展开解析后的 key=value 到列（带命令名前缀）
                 if parsed:
+                    # 解析出具体 key=value 时，展开为 col_name.key 列，
+                    # 不再额外生成一个冗余的命令名列（避免同一结果被显示两次）
                     for k, v in parsed.items():
                         expanded_col = f"{col_name}.{k}"
                         row_data[expanded_col] = v
                         if expanded_col not in all_columns_set:
                             all_columns_set.add(expanded_col)
                             _seen_command_cols.append(expanded_col)
+                else:
+                    # 无解析键时，命令列直接显示原始文本
+                    row_data[col_name] = result.get("text", "")
+                    if col_name not in all_columns_set:
+                        all_columns_set.add(col_name)
+                        _seen_command_cols.append(col_name)
 
             results.append(row_data)
             if row_callback:
