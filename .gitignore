@@ -21,3 +21,9 @@ venv/
 
 # Config
 src/config/config.yaml
+
+# Web runtime artifacts
+src/web/uploads/
+src/src/
+output/
+.playwright-cli/
