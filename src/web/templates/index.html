@@ -1,67 +1,62 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-speedometer2"></i> 仪表盘</h5>
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-3">
-                        <div class="border rounded p-3">
-                            <h3 id="dashDevices" class="text-primary">0</h3>
-                            <small class="text-muted">设备总数</small>
-                        </div>
-                    </div>
-                    <div class="col-3">
-                        <div class="border rounded p-3">
-                            <h3 id="dashOnline" class="text-success">0</h3>
-                            <small class="text-muted">在线</small>
-                        </div>
-                    </div>
-                    <div class="col-3">
-                        <div class="border rounded p-3">
-                            <h3 id="dashCommands" class="text-info">0</h3>
-                            <small class="text-muted">命令数</small>
-                        </div>
-                    </div>
-                    <div class="col-3">
-                        <div class="border rounded p-3">
-                            <h3 id="dashSuccess" class="text-warning">--</h3>
-                            <small class="text-muted">成功率</small>
-                        </div>
-                    </div>
+<div class="ops-page">
+    <section class="panel-box ops-panel">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> 仪表盘</h6>
+        </div>
+        <div class="row text-center">
+            <div class="col-6 col-md-3 mb-2">
+                <div class="border rounded p-3">
+                    <h3 id="dashDevices" class="text-primary mb-0">0</h3>
+                    <small class="text-muted">设备总数</small>
                 </div>
-                <hr>
-                <h6><i class="bi bi-lightning"></i> 快速操作</h6>
-                <div class="d-flex gap-2 flex-wrap">
-                    <a href="/devices" class="btn btn-outline-primary"><i class="bi bi-upload"></i> 加载设备</a>
-                    <a href="/config" class="btn btn-outline-success"><i class="bi bi-play"></i> 执行配置</a>
-                    <a href="/reports" class="btn btn-outline-info"><i class="bi bi-bar-chart"></i> 查看报表</a>
-                    <a href="/logs" class="btn btn-outline-secondary"><i class="bi bi-journal-text"></i> 查看日志</a>
+            </div>
+            <div class="col-6 col-md-3 mb-2">
+                <div class="border rounded p-3">
+                    <h3 id="dashOnline" class="text-success mb-0">0</h3>
+                    <small class="text-muted">在线</small>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 mb-2">
+                <div class="border rounded p-3">
+                    <h3 id="dashCommands" class="text-info mb-0">0</h3>
+                    <small class="text-muted">命令数</small>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 mb-2">
+                <div class="border rounded p-3">
+                    <h3 id="dashSuccess" class="text-warning mb-0">--</h3>
+                    <small class="text-muted">成功率</small>
                 </div>
             </div>
         </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-info-circle"></i> 项目信息</h5>
-            </div>
-            <div class="card-body">
-                <table class="table table-sm table-borderless">
-                    <tr><td>版本</td><td>V9.6-alpha (Web UI)</td></tr>
-                    <tr><td>框架</td><td>Flask + Bootstrap 5</td></tr>
-                    <tr><td>执行策略</td><td><span id="infoStrategy" class="badge bg-info">--</span></td></tr>
-                    <tr><td>认证方式</td><td><span id="infoAuth" class="badge bg-secondary">--</span></td></tr>
-                    <tr><td>日志级别</td><td><span id="infoLogLevel">--</span></td></tr>
-                </table>
-            </div>
+        <hr>
+        <h6><i class="bi bi-lightning"></i> 快速操作</h6>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="/devices" class="btn btn-outline-primary"><i class="bi bi-upload"></i> 加载设备</a>
+            <a href="/config" class="btn btn-outline-success"><i class="bi bi-play"></i> 执行配置</a>
+            <a href="/query" class="btn btn-outline-info"><i class="bi bi-search"></i> CGI查询</a>
+            <a href="/reports" class="btn btn-outline-warning"><i class="bi bi-bar-chart"></i> 查看报表</a>
+            <a href="/logs" class="btn btn-outline-secondary"><i class="bi bi-journal-text"></i> 查看日志</a>
         </div>
-    </div>
+    </section>
+
+    <section class="panel-box ops-panel">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-info-circle"></i> 项目信息</h6>
+        </div>
+        <table class="table table-sm table-borderless">
+            <tr><td>版本</td><td>V10.0.0 (Web UI)</td></tr>
+            <tr><td>框架</td><td>Flask + Bootstrap 5</td></tr>
+            <tr><td>执行策略</td><td><span id="infoStrategy" class="badge bg-info">--</span></td></tr>
+            <tr><td>认证方式</td><td><span id="infoAuth" class="badge bg-secondary">--</span></td></tr>
+            <tr><td>日志级别</td><td><span id="infoLogLevel">--</span></td></tr>
+        </table>
+    </section>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
 // 仪表盘初始化

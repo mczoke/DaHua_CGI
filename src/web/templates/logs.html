@@ -1,61 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-journal-text"></i> 日志查看</h5>
-                <div>
-                    <select class="form-select form-select-sm d-inline-block w-auto me-2" id="logSource" onchange="switchLogSource()">
-                        <option value="buffer">实时日志</option>
-                        <option value="detailed">详细日志</option>
-                        <option value="failure">失败日志</option>
-                    </select>
-                    <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()"><i class="bi bi-trash"></i> 清空</button>
-                    <button class="btn btn-sm btn-outline-light" onclick="refreshLogs()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <!-- 日志级别过滤 -->
-                <div class="mb-2">
-                    <div class="btn-group btn-group-sm" id="logLevelFilter">
-                        <button class="btn btn-outline-secondary active" data-level="ALL" onclick="filterLogLevel('ALL')">全部</button>
-                        <button class="btn btn-outline-info" data-level="INFO" onclick="filterLogLevel('INFO')">INFO</button>
-                        <button class="btn btn-outline-warning" data-level="WARNING" onclick="filterLogLevel('WARNING')">WARNING</button>
-                        <button class="btn btn-outline-danger" data-level="ERROR" onclick="filterLogLevel('ERROR')">ERROR</button>
-                    </div>
-                </div>
-                <!-- 日志内容 -->
-                <div class="border rounded p-2" style="height:500px;overflow-y:auto;font-family:monospace;font-size:12px;background:#1a1a1a">
-                    <pre id="logContent" class="mb-0 text-light" style="white-space:pre-wrap;word-break:break-all">等待日志...</pre>
-                </div>
-                <div class="mt-2">
-                    <small class="text-muted" id="logInfo"></small>
-                </div>
+<div class="ops-page">
+    <section class="panel-box ops-panel ops-results-panel ops-logs-panel">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-journal-text"></i> 日志查看</h6>
+            <div class="ops-panel-actions">
+                <select class="form-select form-select-sm" style="width:auto" id="logSource" onchange="switchLogSource()">
+                    <option value="buffer">实时日志</option>
+                    <option value="detailed">详细日志</option>
+                    <option value="failure">失败日志</option>
+                </select>
+                <button class="btn btn-outline-light btn-sm" onclick="refreshLogs()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+                <button class="btn btn-outline-danger btn-sm" onclick="clearLogs()"><i class="bi bi-trash"></i> 清空</button>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- 配置管理 Modal -->
-<div class="modal fade" id="configModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title">配置管理</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <textarea id="configEditor" class="form-control bg-dark text-light" style="height:400px;font-family:monospace;font-size:13px"></textarea>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+        <div class="mb-2">
+            <div class="btn-group btn-group-sm" id="logLevelFilter">
+                <button class="btn btn-outline-secondary active" data-level="ALL" onclick="filterLogLevel('ALL')">全部</button>
+                <button class="btn btn-outline-info" data-level="INFO" onclick="filterLogLevel('INFO')">INFO</button>
+                <button class="btn btn-outline-warning" data-level="WARNING" onclick="filterLogLevel('WARNING')">WARNING</button>
+                <button class="btn btn-outline-danger" data-level="ERROR" onclick="filterLogLevel('ERROR')">ERROR</button>
             </div>
         </div>
-    </div>
+
+        <div class="result-scroll log-content-scroll">
+            <pre id="logContent" class="mb-0 text-light" style="white-space:pre-wrap;word-break:break-all;padding:10px">等待日志...</pre>
+        </div>
+        <div class="mt-2">
+            <small class="text-muted" id="logInfo"></small>
+        </div>
+    </section>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
 let logLevelFilter = 'ALL';

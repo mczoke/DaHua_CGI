@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-V9.6-alpha - 完整主界面 + 聚合报表
+V10.0.0 - 完整主界面 + 聚合报表
 提供：
 - 从 Excel 加载设备
 - Ping 检测
@@ -308,7 +308,7 @@ class AggregateReportTab(ttk.Frame):
 class DahuaConfigApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('DaHua CGI 批量配置 - V9.6-alpha')
+        self.title('DaHua CGI 批量配置 - V10.0.0')
         self.geometry('1100x700')
 
         self.config_data = ConfigManager.load_config()

@@ -1,71 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备管理</h5>
-                <div>
-                    <button class="btn btn-outline-light btn-sm" onclick="showDeviceModal()"><i class="bi bi-plus-lg"></i> 手动添加</button>
-                    <button class="btn btn-success btn-sm" onclick="pingSelected()"><i class="bi bi-wifi"></i> Ping检测</button>
-                    <a href="/api/template/download" class="btn btn-info btn-sm"><i class="bi bi-download"></i> 下载模板</a>
-                    <button class="btn btn-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
-                    <button class="btn btn-danger btn-sm" onclick="clearDevices()"><i class="bi bi-trash"></i> 清空设备</button>
-                    <button class="btn btn-warning btn-sm" onclick="deleteSelected()"><i class="bi bi-x-lg"></i> 删除选中</button>
-                </div>
+<div class="ops-page">
+    <section class="panel-box ops-panel ops-results-panel ops-devices-panel">
+        <div class="ops-panel-header">
+            <h6 class="mb-0"><i class="bi bi-hdd-stack"></i> 设备管理</h6>
+            <div class="ops-panel-actions">
+                <button class="btn btn-outline-light btn-sm" onclick="showDeviceModal()"><i class="bi bi-plus-lg"></i> 手动添加</button>
+                <button class="btn btn-info btn-sm" onclick="pingSelected()"><i class="bi bi-wifi"></i> Ping检测</button>
+                <a href="/api/template/download" class="btn btn-outline-info btn-sm"><i class="bi bi-download"></i> 下载模板</a>
+                <button class="btn btn-outline-primary btn-sm" onclick="showUploadModal()"><i class="bi bi-upload"></i> 上传Excel</button>
+                <button class="btn btn-outline-warning btn-sm" onclick="deleteSelected()"><i class="bi bi-x-lg"></i> 删除选中</button>
+                <button class="btn btn-outline-danger btn-sm" onclick="clearDevices()"><i class="bi bi-trash"></i> 清空设备</button>
             </div>
-            <div class="card-body">
-                <!-- 进度条 -->
-                <div id="pingProgress" class="mb-3" style="display:none">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span id="pingStatus">检测中...</span>
-                        <span id="pingPercent">0%</span>
-                    </div>
-                    <div class="progress" style="height:8px">
-                        <div id="pingBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
-                    </div>
-                </div>
+        </div>
 
-                <!-- 设备统计 -->
-                <div class="row mb-3">
-                    <div class="col-3"><span class="badge bg-secondary" id="statTotal">总数: 0</span></div>
-                    <div class="col-3"><span class="badge bg-success" id="statOnline">在线: 0</span></div>
-                    <div class="col-3"><span class="badge bg-danger" id="statOffline">离线: 0</span></div>
-                    <div class="col-3"><span class="badge bg-primary" id="statSelected">选中: 0</span></div>
-                </div>
+        <div id="pingProgress" class="mb-2" style="display:none">
+            <div class="d-flex justify-content-between mb-1">
+                <span id="pingStatus">检测中...</span>
+                <span id="pingPercent">0%</span>
+            </div>
+            <div class="progress" style="height:8px">
+                <div id="pingBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+            </div>
+        </div>
 
-                <!-- 选择操作 -->
-                <div class="btn-group btn-group-sm mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="badge bg-secondary" id="statTotal">总数: 0</span>
+            <span class="badge bg-success" id="statOnline">在线: 0</span>
+            <span class="badge bg-danger" id="statOffline">离线: 0</span>
+            <span class="badge bg-primary" id="statSelected">选中: 0</span>
+            <div class="ms-auto flex-shrink-0">
+                <div class="btn-group btn-group-sm" role="group">
                     <button class="btn btn-outline-light" onclick="selectMode('all')">全选</button>
                     <button class="btn btn-outline-light" onclick="selectMode('none')">全不选</button>
                     <button class="btn btn-outline-light" onclick="selectMode('online')">选在线</button>
                     <button class="btn btn-outline-light" onclick="selectMode('invert')">反选</button>
                 </div>
-
-                <!-- 设备表格 -->
-                <div class="table-responsive" style="max-height:600px;overflow-y:auto">
-                    <table class="table table-dark table-hover table-sm" id="deviceTable">
-                        <thead>
-                            <tr>
-                                <th style="width:40px">#</th>
-                                <th style="width:40px"><input type="checkbox" onchange="toggleAll(this)"></th>
-                                <th>IP地址</th>
-                                <th>端口</th>
-                                <th>用户名</th>
-                                <th>状态</th>
-                                <th>在线</th>
-                                <th>消息</th>
-                                <th style="width:72px">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="deviceTableBody">
-                            <tr><td colspan="9" class="text-center text-muted">未加载设备，请上传 Excel 文件或手动添加</td></tr>
-                        </tbody>
-                    </table>
-                </div>
             </div>
         </div>
-    </div>
+
+        <div class="result-scroll">
+            <table class="table table-dark table-hover table-sm sticky-head" id="deviceTable">
+                <thead>
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th style="width:40px"><input type="checkbox" onchange="toggleAll(this)"></th>
+                        <th>IP地址</th>
+                        <th>端口</th>
+                        <th>用户名</th>
+                        <th>状态</th>
+                        <th>在线</th>
+                        <th>消息</th>
+                        <th style="width:72px">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="deviceTableBody">
+                    <tr><td colspan="9" class="text-center text-muted">未加载设备，请上传 Excel 文件或手动添加</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>
 
 <!-- 手动维护 Modal -->
@@ -134,6 +128,7 @@
     </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
 let deviceList = [];

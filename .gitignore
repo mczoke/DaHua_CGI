@@ -27,3 +27,10 @@ src/web/uploads/
 src/src/
 output/
 .playwright-cli/
+
+# macOS
+.DS_Store
+
+# 学习/参考工具(非本项目代码,含大量二进制),及压缩包
+dahua-web-tool/
+*.rar

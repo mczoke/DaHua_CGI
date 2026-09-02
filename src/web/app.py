@@ -1242,7 +1242,7 @@ if __name__ == "__main__":
     print(f"  Log level: {_config.get('log_level', 'INFO')}")
     print(f"  Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("-" * 60)
-    print("  Open browser: http://127.0.0.1:5000")
+    print("  Open browser: http://127.0.0.1:5001")
     print("=" * 60)
 
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)

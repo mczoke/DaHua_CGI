@@ -681,3 +681,20 @@ pre {
     color: #c9d1d9;
     font-weight: 400;
 }
+
+/* 日志查看页 — 日志滚动区（跟随框内统一风格） */
+.ops-logs-panel .log-content-scroll {
+    flex: 1 1 0;
+    min-height: 120px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+/* 设备管理页 — 表格滚动区 */
+.ops-devices-panel .result-scroll {
+    flex: 1 1 0;
+    min-height: 120px;
+}

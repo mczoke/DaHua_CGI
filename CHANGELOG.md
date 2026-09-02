@@ -1,5 +1,13 @@
 # 变更日志
 
+## [V10.0.0] - 2026-09-02
+### 版本基线（V10 迭代起点）
+- 确立 V10.0.0 版本基线，本地与远端 `/data/DaHua_CGI` 对齐
+- 基于 V9.7-alpha：Web UI 六大页面布局统一为 `panel-box/ops-panel` 新框架
+- 本地默认端口调整为 5001（避开 macOS ControlCenter 占用的 5000）
+- 纳入学习文档：`docs/dahua-web-tool_对比学习.md`、`docs/项目规划与路线图.md`
+- 本版本为迭代基线，后续功能/架构改进在 V10 分支推进
+
 ## [V9.7-alpha] - 2026-07-10
 ### 代码质量修复 — 异常处理规范化 + 类型注解修正 (Codex CLI + Boss ✅)
 - **类型注解修正**：`device_manager.py` 中 5 个函数的返回类型 `-> dict` → `-> list`
